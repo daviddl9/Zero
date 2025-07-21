@@ -17,20 +17,23 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Check, Command, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { TextEffect } from '@/components/motion-primitives/text-effect';
-import { ScheduleSendPicker } from './schedule-send-picker';
+import { RecipientAutosuggest } from '@/components/ui/recipient-autosuggest';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TextEffect } from '@/components/motion-primitives/text-effect';
+import { ImageCompressionSettings } from './image-compression-settings';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
+import type { ImageQuality } from '@/lib/image-compression';
+import { ScheduleSendPicker } from './schedule-send-picker';
 import useComposeEditor from '@/hooks/use-compose-editor';
 import { CurvedArrow, Sparkles, X } from '../icons/icons';
+import { compressImages } from '@/lib/image-compression';
 import { gitHubEmojis } from '@tiptap/extension-emoji';
 import { AnimatePresence, motion } from 'motion/react';
 import { zodResolver } from '@hookform/resolvers/zod';
-
 import { useTRPC } from '@/providers/query-provider';
 import { useMutation } from '@tanstack/react-query';
 import { useSettings } from '@/hooks/use-settings';
-
+import { TemplateButton } from './template-button';
 import { cn, formatFileSize } from '@/lib/utils';
 import { useThread } from '@/hooks/use-threads';
 import { serializeFiles } from '@/lib/schemas';
@@ -43,23 +46,6 @@ import { Toolbar } from './toolbar';
 import pluralize from 'pluralize';
 import { toast } from 'sonner';
 import { z } from 'zod';
-
-import { RecipientAutosuggest } from '@/components/ui/recipient-autosuggest';
-import { ImageCompressionSettings } from './image-compression-settings';
-import { compressImages } from '@/lib/image-compression';
-import type { ImageQuality } from '@/lib/image-compression';
-
-const shortcodeRegex = /:([a-zA-Z0-9_+-]+):/g;
-import { TemplateButton } from './template-button';
-
-type ThreadContent = {
-  from: string;
-  to: string[];
-  body: string;
-  cc?: string[];
-  subject: string;
-}[];
-
 interface EmailComposerProps {
   initialTo?: string[];
   initialCc?: string[];
@@ -93,9 +79,8 @@ interface EmailComposerProps {
   editorClassName?: string;
   draftId?: string | null;
   inATab?: boolean;
+  isFullscreen?: boolean;
 }
-
-
 
 const schema = z.object({
   to: z.array(z.string().email()).min(1),
@@ -125,6 +110,7 @@ export function EmailComposer({
   editorClassName,
   draftId: propDraftId,
   inATab = false,
+  isFullscreen = false,
 }: EmailComposerProps) {
   const { data: aliases } = useEmailAliases();
   const { data: settings } = useSettings();
@@ -604,7 +590,6 @@ export function EmailComposer({
   //   await handleAiGenerate();
   // });
 
-
   // keep fromEmail in sync when settings or aliases load afterwards
   useEffect(() => {
     const preferred =
@@ -643,10 +628,11 @@ export function EmailComposer({
   return (
     <div
       className={cn(
-        'flex max-h-dvh w-full max-w-[750px] flex-col overflow-hidden bg-[#FAFAFA] shadow-sm dark:bg-[#202020]',
+        'flex max-h-dvh w-full flex-col overflow-hidden bg-[#FAFAFA] shadow-sm dark:bg-[#202020]',
         {
           'rounded-2xl': !inATab,
           'rounded-none': inATab,
+          'max-w-[750px]': !isFullscreen,
         },
         className,
       )}
@@ -783,7 +769,7 @@ export function EmailComposer({
         ) : null}
 
         {/* Message Content */}
-        <div className="flex-1 overflow-y-auto border-t bg-[#FFFFFF] px-3 py-3 outline-white/5 dark:bg-[#202020]">
+        <div className="flex-1 overflow-y-auto bg-[#FFFFFF] px-3 py-3 outline-white/5 dark:bg-[#202020]">
           <div
             onClick={() => {
               editor.commands.focus();
@@ -804,7 +790,11 @@ export function EmailComposer({
         <div className="flex flex-col items-start justify-start gap-2">
           {toggleToolbar && <Toolbar editor={editor} />}
           <div className="flex items-center justify-start gap-2">
-            <Button size={'xs'} onClick={handleSend} disabled={isLoading || settingsLoading || !isScheduleValid}>
+            <Button
+              size={'xs'}
+              onClick={handleSend}
+              disabled={isLoading || settingsLoading || !isScheduleValid}
+            >
               <div className="flex items-center justify-center">
                 <div className="text-center text-sm leading-none text-white dark:text-black">
                   <span>Send </span>
@@ -820,6 +810,56 @@ export function EmailComposer({
               onChange={handleScheduleChange}
               onValidityChange={handleScheduleValidityChange}
             />
+            <div className="relative">
+              <AnimatePresence>
+                {aiGeneratedMessage !== null ? (
+                  <ContentPreview
+                    content={aiGeneratedMessage}
+                    onAccept={() => {
+                      editor.commands.setContent({
+                        type: 'doc',
+                        content: aiGeneratedMessage.split(/\r?\n/).map((line) => {
+                          return {
+                            type: 'paragraph',
+                            content: line.trim().length === 0 ? [] : [{ type: 'text', text: line }],
+                          };
+                        }),
+                      });
+                      setAiGeneratedMessage(null);
+                    }}
+                    onReject={() => {
+                      setAiGeneratedMessage(null);
+                    }}
+                  />
+                ) : null}
+              </AnimatePresence>
+              <Button
+                size={'xs'}
+                variant={'ghost'}
+                className="border border-[#8B5CF6]"
+                onClick={async () => {
+                  if (!subjectInput.trim()) {
+                    await handleGenerateSubject();
+                  }
+                  setAiGeneratedMessage(null);
+                  await handleAiGenerate();
+                }}
+                disabled={isLoading || aiIsLoading || messageLength < 1}
+              >
+                <div className="flex items-center justify-center gap-2.5 pl-0.5">
+                  <div className="flex h-5 items-center justify-center gap-1 rounded-sm">
+                    {aiIsLoading ? (
+                      <Loader className="h-3.5 w-3.5 animate-spin fill-black dark:fill-white" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5 fill-black dark:fill-white" />
+                    )}
+                  </div>
+                  <div className="hidden text-center text-sm leading-none text-black md:block dark:text-white">
+                    Generate
+                  </div>
+                </div>
+              </Button>
+            </div>
             <Button variant={'secondary'} size={'xs'} onClick={() => fileInputRef.current?.click()}>
               <Plus className="h-3 w-3 fill-[#9A9A9A]" />
               <span className="hidden px-0.5 text-sm md:block">Add</span>
@@ -983,56 +1023,51 @@ export function EmailComposer({
           </div>
         </div>
         <div className="flex items-start justify-start gap-2">
-          <div className="relative">
-            <AnimatePresence>
-              {aiGeneratedMessage !== null ? (
-                <ContentPreview
-                  content={aiGeneratedMessage}
-                  onAccept={() => {
-                    editor.commands.setContent({
-                      type: 'doc',
-                      content: aiGeneratedMessage.split(/\r?\n/).map((line) => {
-                        return {
-                          type: 'paragraph',
-                          content: line.trim().length === 0 ? [] : [{ type: 'text', text: line }],
-                        };
-                      }),
-                    });
-                    setAiGeneratedMessage(null);
-                  }}
-                  onReject={() => {
-                    setAiGeneratedMessage(null);
-                  }}
-                />
-              ) : null}
-            </AnimatePresence>
-            <Button
-              size={'xs'}
-              variant={'ghost'}
-              className="border border-[#8B5CF6]"
-              onClick={async () => {
-                if (!subjectInput.trim()) {
-                  await handleGenerateSubject();
-                }
-                setAiGeneratedMessage(null);
-                await handleAiGenerate();
-              }}
-              disabled={isLoading || aiIsLoading || messageLength < 1}
-            >
-              <div className="flex items-center justify-center gap-2.5 pl-0.5">
-                <div className="flex h-5 items-center justify-center gap-1 rounded-sm">
-                  {aiIsLoading ? (
-                    <Loader className="h-3.5 w-3.5 animate-spin fill-black dark:fill-white" />
-                  ) : (
-                    <Sparkles className="h-3.5 w-3.5 fill-black dark:fill-white" />
-                  )}
-                </div>
-                <div className="hidden text-center text-sm leading-none text-black md:block dark:text-white">
-                  Generate
-                </div>
+          <Button size={'xs'} onClick={handleSend} disabled={isLoading || settingsLoading}>
+            <div className="flex items-center justify-center">
+              <div className="text-center text-sm leading-none text-white dark:text-black">
+                <span>Send </span>
               </div>
-            </Button>
-          </div>
+            </div>
+          </Button>
+          <Button variant={'secondary'} size={'xs'}>
+            <div className="flex h-5 items-center justify-center gap-1 rounded-sm bg-white/10 px-1 dark:bg-black/10">
+              <Command className="h-3.5 w-3.5 text-white dark:text-black" />
+              <CurvedArrow className="mt-1.5 h-4 w-4 fill-white dark:fill-black" />
+            </div>
+          </Button>
+
+          {/* <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  disabled
+                  className="hidden h-7 items-center gap-0.5 overflow-hidden rounded-md bg-white/5 px-1.5 shadow-sm hover:bg-white/10 disabled:opacity-50 md:flex"
+                >
+                  <Smile className="h-3 w-3 fill-[#9A9A9A]" />
+                  <span className="px-0.5 text-sm">Casual</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Coming soon...</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  disabled
+                  className="flex h-7 items-center gap-0.5 overflow-hidden rounded-md bg-white/5 px-1.5 shadow-sm hover:bg-white/10 disabled:opacity-50 md:flex"
+                >
+                  {messageLength < 50 && <ShortStack className="h-3 w-3 fill-[#9A9A9A]" />}
+                  {messageLength >= 50 && messageLength < 200 && (
+                    <MediumStack className="h-3 w-3 fill-[#9A9A9A]" />
+                  )}
+                  {messageLength >= 200 && <LongStack className="h-3 w-3 fill-[#9A9A9A]" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Coming soon...</p>
+              </TooltipContent>
+            </Tooltip> */}
         </div>
       </div>
 
