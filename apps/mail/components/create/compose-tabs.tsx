@@ -2,7 +2,9 @@ import {
   activeComposeTabIdAtom,
   composeTabsAtom,
   fullscreenTabIdAtom,
+  isMobileAtom,
   removeComposeTabAtom,
+  switchMobileTabAtom,
   toggleFullscreenTabAtom,
   toggleMinimizeTabAtom,
   updateComposeTabAtom,
@@ -12,8 +14,10 @@ import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
 import { AnimatePresence, motion } from 'motion/react';
 import { useTRPC } from '@/providers/query-provider';
+import { SidebarToggle } from '../ui/sidebar-toggle';
 import { useMutation } from '@tanstack/react-query';
 import { useSettings } from '@/hooks/use-settings';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { EmailComposer } from './email-composer';
 import { Button } from '@/components/ui/button';
 import { useAISidebar } from '../ui/ai-sidebar';
@@ -21,10 +25,10 @@ import { useSession } from '@/lib/auth-client';
 import { serializeFiles } from '@/lib/schemas';
 import { useDraft } from '@/hooks/use-drafts';
 import { useAtom, useSetAtom } from 'jotai';
+import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-// Component to handle draft loading for each tab
 function ComposeTabContent({
   tab,
   tabId,
@@ -34,7 +38,7 @@ function ComposeTabContent({
   settingsLoading,
   isFullscreen = false,
 }: {
-  tab: any; // Using any for now since ComposeTab is from the store
+  tab: any;
   tabId: string;
   onSendEmail: (tabId: string, data: any) => void;
   onChange: (updates: any) => void;
@@ -55,7 +59,6 @@ function ComposeTabContent({
     );
   }
 
-  // Use draft data if available, otherwise use tab data
   const initialTo = draft?.to?.map((e: string) => e.replace(/[<>]/g, '')) || tab.to || [];
   const initialCc = draft?.cc?.map((e: string) => e.replace(/[<>]/g, '')) || tab.cc || [];
   const initialBcc = draft?.bcc?.map((e: string) => e.replace(/[<>]/g, '')) || tab.bcc || [];
@@ -74,11 +77,10 @@ function ComposeTabContent({
       draftId={tab.draftId}
       onSendEmail={async (data) => await onSendEmail(tabId, data)}
       onClose={() => {
-        /* Handled by parent */
+        /* handled by parent */
       }}
       onChange={onChange}
       onDraftCreated={(newDraftId) => {
-        // Update the tab with the new draft ID
         updateTab({ id: tabId, updates: { draftId: newDraftId } });
       }}
       className="h-full overflow-hidden rounded-none border-[1px] border-[#313131] bg-[#313131]"
@@ -97,6 +99,19 @@ export function ComposeTabs() {
   const updateTab = useSetAtom(updateComposeTabAtom);
   const toggleMinimize = useSetAtom(toggleMinimizeTabAtom);
   const toggleFullscreen = useSetAtom(toggleFullscreenTabAtom);
+  const switchMobileTab = useSetAtom(switchMobileTabAtom);
+  const setIsMobile = useSetAtom(isMobileAtom);
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    setIsMobile(isMobile);
+  }, [isMobile, setIsMobile]);
+
+  useEffect(() => {
+    if (isMobile && fullscreenTabId) {
+      toggleFullscreen(null);
+    }
+  }, [isMobile, fullscreenTabId, toggleFullscreen]);
   const {
     open: isSidebarOpen,
     isFullScreen: isAIFullScreen,
@@ -166,17 +181,163 @@ export function ComposeTabs() {
   const isFullscreen = !!fullscreenTabId;
   const fullscreenTab = fullscreenTabId ? composeTabs.get(fullscreenTabId) : null;
 
+  if (isMobile && tabs.length > 0) {
+    const activeTabData = activeTabId ? composeTabs.get(activeTabId) : null;
+    const showBottomSheet = activeTabData && !activeTabData.isMinimized;
+
+    if (!showBottomSheet) {
+      return (
+        <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-2">
+          {tabs.map(([tabId, tab]) => (
+            <motion.div
+              key={tabId}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+            >
+              <motion.button
+                onClick={() => switchMobileTab(tabId)}
+                className="bg-background flex h-12 items-center gap-2 rounded-full border px-4 shadow-lg dark:bg-[#313131]"
+                whileTap={{ scale: 0.95 }}
+              >
+                <span className="text-sm font-medium">
+                  {tab.subject || (tab.to?.length ? `To: ${tab.to[0]}` : 'New Email')}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeTab(tabId);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </motion.button>
+            </motion.div>
+          ))}
+        </div>
+      );
+    }
+
+    if (!activeTabId || !activeTabData) {
+      return null;
+    }
+
+    return (
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.2}
+        onDragEnd={(e, { velocity }) => {
+          if (velocity.y > 500) {
+            toggleMinimize(activeTabId);
+          }
+        }}
+        className="bg-background fixed inset-x-0 bottom-0 z-40 h-[85vh] rounded-t-2xl border-t shadow-2xl dark:bg-[#313131]"
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex justify-center py-2">
+            <div className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-600" />
+          </div>
+
+          <div className="flex items-center justify-between border-b p-3">
+            <h3 className="text-lg font-semibold">{activeTabData.subject || 'New Email'}</h3>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => toggleMinimize(activeTabId)}
+                className="h-8 w-8"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => removeTab(activeTabId)}
+                className="h-8 w-8"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden">
+            <ComposeTabContent
+              tab={activeTabData}
+              tabId={activeTabId}
+              onSendEmail={handleSendEmail}
+              onChange={(updates) => updateTab({ id: activeTabId, updates })}
+              updateTab={updateTab}
+              settingsLoading={settingsLoading}
+            />
+          </div>
+
+          {tabs.length > 1 && (
+            <div className="bg-background border-t p-2 dark:bg-[#313131]">
+              <div className="scrollbar-none flex gap-2 overflow-x-auto">
+                {tabs.map(([id, t]) => (
+                  <motion.button
+                    key={id}
+                    onClick={() => {
+                      if (id !== activeTabId) {
+                        switchMobileTab(id);
+                      }
+                    }}
+                    className={cn(
+                      'flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs transition-colors',
+                      id === activeTabId
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80',
+                    )}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <span className="max-w-[120px] truncate">
+                      {t.subject || (t.to?.[0] ? `To: ${t.to[0]}` : 'New Email')}
+                    </span>
+                    <X
+                      className="h-3 w-3 opacity-60 hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeTab(id);
+                        if (id === activeTabId && tabs.length > 1) {
+                          const otherTabId = tabs.find(([tabId]) => tabId !== id)?.[0];
+                          if (otherTabId) {
+                            switchMobileTab(otherTabId);
+                          }
+                        }
+                      }}
+                    />
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
+
   if (isFullscreen && fullscreenTab) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-[#FAFAFA] dark:bg-[#141414]"
+        className="absolute inset-0 z-50 bg-[#FAFAFA] dark:bg-[#141414]"
       >
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b p-2 pr-1.5">
-            <h2 className="text-lg font-semibold">{fullscreenTab.subject || 'New Email'}</h2>
+        <div className="flex h-full flex-col overflow-hidden rounded-2xl border">
+          <div className="flex items-center justify-between border-b bg-[#FAFAFA] p-2 pl-4 pr-1.5 dark:bg-[#313131]">
+            <div className="flex items-center gap-2">
+              <SidebarToggle />
+              <h2 className="text-lg font-semibold">{fullscreenTab.subject || 'New Email'}</h2>
+            </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -319,14 +480,16 @@ export function ComposeTabs() {
                             >
                               <Minus className="h-3 w-3 text-[#909090]" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => toggleFullscreen(tab.id)}
-                            >
-                              <Maximize2 className="h-3 w-3 text-[#909090]" />
-                            </Button>
+                            {!isMobile && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => toggleFullscreen(tab.id)}
+                              >
+                                <Maximize2 className="h-3 w-3 text-[#909090]" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -359,16 +522,17 @@ export function ComposeTabs() {
             })}
           </AnimatePresence>
           {/*
-        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 rounded-lg border bg-[#FFFFFF] dark:bg-[#202020]"
-            onClick={handleAddTab}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </motion.div> */}
+          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-lg border bg-[#FFFFFF] dark:bg-[#202020]"
+              onClick={handleAddTab}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </motion.div>
+        */}
         </div>
       </div>
     </>

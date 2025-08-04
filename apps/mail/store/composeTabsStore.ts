@@ -15,6 +15,8 @@ export interface ComposeTab {
   isMinimized?: boolean;
 }
 
+export const isMobileAtom = atom<boolean>(false);
+
 export const composeTabsAtom = atomWithStorage<Map<string, ComposeTab>>('composeTabs', new Map(), {
   getItem: (key, initialValue): Map<string, ComposeTab> => {
     const stored = localStorage.getItem(key);
@@ -37,6 +39,16 @@ export const fullscreenTabIdAtom = atom<string | null>(null);
 
 export const addComposeTabAtom = atom(null, async (get, set, tab: Partial<ComposeTab>) => {
   const tabs = await get(composeTabsAtom);
+  const isMobile = get(isMobileAtom);
+  const currentActiveId = get(activeComposeTabIdAtom);
+
+  if (isMobile && currentActiveId) {
+    const activeTab = tabs.get(currentActiveId);
+    if (activeTab && !activeTab.isMinimized) {
+      set(updateComposeTabAtom, { id: currentActiveId, updates: { isMinimized: true } });
+    }
+  }
+
   const id = `compose-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const newTab: ComposeTab = {
     id,
@@ -56,6 +68,9 @@ export const addComposeTabAtom = atom(null, async (get, set, tab: Partial<Compos
 
 export const removeComposeTabAtom = atom(null, async (get, set, tabId: string) => {
   const tabs = await get(composeTabsAtom);
+  const isMobile = get(isMobileAtom);
+  const removedTab = tabs.get(tabId);
+
   const newTabs = new Map(tabs);
   newTabs.delete(tabId);
   set(composeTabsAtom, newTabs);
@@ -65,11 +80,29 @@ export const removeComposeTabAtom = atom(null, async (get, set, tabId: string) =
   }
 
   if (get(activeComposeTabIdAtom) === tabId) {
-    const remainingTabs = Array.from(newTabs.keys());
-    set(
-      activeComposeTabIdAtom,
-      remainingTabs.length > 0 ? remainingTabs[remainingTabs.length - 1] : null,
-    );
+    const remainingTabs = Array.from(newTabs.entries());
+
+    if (remainingTabs.length > 0) {
+      if (isMobile && removedTab && !removedTab.isMinimized) {
+        const minimizedTabs = remainingTabs
+          .filter(([_, t]) => t.isMinimized)
+          .sort((a, b) => b[1].lastModified - a[1].lastModified);
+
+        if (minimizedTabs.length > 0) {
+          const [nextTabId] = minimizedTabs[0];
+          set(updateComposeTabAtom, { id: nextTabId, updates: { isMinimized: false } });
+          set(activeComposeTabIdAtom, nextTabId);
+        } else {
+          const lastTabId = remainingTabs[remainingTabs.length - 1][0];
+          set(activeComposeTabIdAtom, lastTabId);
+        }
+      } else {
+        const lastTabId = remainingTabs[remainingTabs.length - 1][0];
+        set(activeComposeTabIdAtom, lastTabId);
+      }
+    } else {
+      set(activeComposeTabIdAtom, null);
+    }
   }
 });
 
@@ -97,6 +130,8 @@ export const toggleMinimizeTabAtom = atom(null, async (get, set, tabId: string) 
   const tab = tabs.get(tabId);
   if (!tab) return;
 
+  const isMobile = get(isMobileAtom);
+
   const updatedTab = {
     ...tab,
     isMinimized: !tab.isMinimized,
@@ -108,10 +143,16 @@ export const toggleMinimizeTabAtom = atom(null, async (get, set, tabId: string) 
 
   if (!updatedTab.isMinimized) {
     set(activeComposeTabIdAtom, tabId);
+  } else if (isMobile && updatedTab.isMinimized) {
+    //  do nothing
   }
 });
 
 export const toggleFullscreenTabAtom = atom(null, (get, set, tabId: string | null) => {
+  const isMobile = get(isMobileAtom);
+
+  if (isMobile) return;
+
   const currentFullscreen = get(fullscreenTabIdAtom);
 
   if (currentFullscreen === tabId) {
@@ -122,4 +163,20 @@ export const toggleFullscreenTabAtom = atom(null, (get, set, tabId: string | nul
       set(activeComposeTabIdAtom, tabId);
     }
   }
+});
+
+export const switchMobileTabAtom = atom(null, (get, set, targetId: string) => {
+  const tabs = get(composeTabsAtom);
+  const currentActiveId = get(activeComposeTabIdAtom);
+
+  if (currentActiveId && currentActiveId !== targetId) {
+    const currentTab = tabs.get(currentActiveId);
+    if (currentTab && !currentTab.isMinimized) {
+      set(updateComposeTabAtom, { id: currentActiveId, updates: { isMinimized: true } });
+    }
+  }
+
+  set(updateComposeTabAtom, { id: targetId, updates: { isMinimized: false } });
+
+  set(activeComposeTabIdAtom, targetId);
 });
