@@ -1,89 +1,47 @@
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { Github, Mail, ArrowLeft, Link2 } from 'lucide-react';
-import { Navigation } from '@/components/navigation';
-import { Button } from '@/components/ui/button';
-import Footer from '@/components/home/footer';
-import { createSectionId } from '@/lib/utils';
+import { useTheme } from 'next-themes';
+import { useEffect } from 'react';
 
 import React from 'react';
 
-const LAST_UPDATED = 'May 16, 2025';
-
 export default function PrivacyPolicy() {
-  const { copiedValue: copiedSection, copyToClipboard } = useCopyToClipboard();
+  const { setTheme } = useTheme();
 
-  const handleCopyLink = (sectionId: string) => {
-    const url = `${window.location.origin}${window.location.pathname}#${sectionId}`;
-    copyToClipboard(url, sectionId);
-  };
+  useEffect(() => {
+    setTheme('dark');
+  }, [setTheme]);
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-auto bg-white dark:bg-[#111111]">
-      <Navigation />
-      <div className="relative z-10 flex flex-grow flex-col">
-        <div className="absolute right-4 top-6 md:left-8 md:right-auto md:top-8">
-          <a href="/">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-gray-600 hover:text-gray-900 dark:text-white dark:hover:text-white/80"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </a>
-        </div>
+        <main className="relative flex flex-col overflow-x-hidden bg-[#000000] px-2 flex-1">
+      <article className="mt-2 flex flex-col items-center flex-1">
+        <div className="w-full max-w-[800px] mx-auto flex flex-col px-5">
+          
+          {/* Header */}
+          <header className="mb-8 mt-16 text-center">
+            <h1 className="text-4xl md:text-6xl text-white mb-3 leading-tight">
+              Privacy Policy
+            </h1>
+            <p className="text-sm text-white/50 mb-8 leading-relaxed max-w-3xl mx-auto">
+              Last updated: July 31, 2025
+            </p>
+          </header>
 
-        <div className="container mx-auto max-w-4xl px-4 py-16">
-          <Card className="overflow-hidden rounded-xl border-none bg-gray-50/80 dark:bg-transparent">
-            <CardHeader className="space-y-4 px-8 py-8">
-              <div className="space-y-2 text-center">
-                <CardTitle className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl dark:text-white">
-                  Privacy Policy
-                </CardTitle>
-                <div className="flex items-center justify-center gap-2">
-                  <p className="text-sm text-gray-500 dark:text-white/60">
-                    Last updated: {LAST_UPDATED}
-                  </p>
+          {/* Content */}
+          <div className="mb-16 space-y-16">
+            {sections.map((section) => (
+              <section key={section.title}>
+                <h1 className="text-2xl font-bold text-white mb-5 leading-tight">
+                  {section.title}
+                </h1>
+                <div className="prose prose-invert prose-lg text-white/70 leading-relaxed max-w-none">
+                  {section.content}
                 </div>
-              </div>
-            </CardHeader>
-
-            <div className="space-y-8 p-8">
-              {sections.map((section) => {
-                const sectionId = createSectionId(section.title);
-                return (
-                  <div key={section.title} id={sectionId} className="p-6">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                        {section.title}
-                      </h2>
-                      <button
-                        onClick={() => handleCopyLink(sectionId)}
-                        className="text-gray-400 transition-all hover:text-gray-700 dark:text-white/60 dark:hover:text-white/80"
-                        aria-label={`Copy link to ${section.title} section`}
-                      >
-                        <Link2
-                          className={`h-4 w-4 ${copiedSection === sectionId ? 'text-green-500 dark:text-green-400' : ''}`}
-                        />
-                      </button>
-                    </div>
-                    <div className="prose prose-sm prose-a:text-blue-600 hover:prose-a:text-blue-800 dark:prose-a:text-blue-400 dark:hover:prose-a:text-blue-300 max-w-none text-gray-600 dark:text-white/80">
-                      {section.content}
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="mt-12 flex flex-wrap items-center justify-center gap-4"></div>
-            </div>
-          </Card>
+              </section>
+            ))}
+          </div>
+          
         </div>
-
-        <Footer />
-      </div>
-    </div>
+      </article>
+    </main>
   );
 }
 
@@ -305,19 +263,11 @@ const sections = [
         to the{' '}
         <a
           href="https://developers.google.com/terms/api-services-user-data-policy"
-          className="inline-flex items-center text-blue-600 hover:text-blue-800"
+          className="text-white/70 hover:text-white/60 underline"
           target="_blank"
           rel="noopener noreferrer"
         >
           Google API Services User Data Policy
-          <svg className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-            />
-          </svg>
         </a>
         , including the Limited Use requirements.
       </div>
@@ -418,33 +368,9 @@ const sections = [
     title: 'Contact',
     content: (
       <div className="space-y-3">
-        <p>For privacy-related questions or concerns:</p>
-        <div className="flex flex-col space-y-2">
-          <a
-            href="mailto:founders@0.email"
-            className="inline-flex items-center text-blue-600 hover:text-blue-800"
-          >
-            <Mail className="mr-2 h-4 w-4" />
-            founders@0.email
-          </a>
-          <a
-            href="https://github.com/Mail-0/Zero"
-            className="inline-flex items-center text-blue-600 hover:text-blue-800"
-          >
-            <Github className="mr-2 h-4 w-4" />
-            Open an issue on GitHub
-          </a>
-        </div>
+        <p>For privacy-related questions or concerns: <a href="mailto:founders@0.email" className="text-white/70 hover:text-white/60 underline">founders@0.email</a></p>
       </div>
     ),
   },
-  {
-    title: 'Updates to This Policy',
-    content: (
-      <p>
-        We may update this privacy policy from time to time. We will notify users of any material
-        changes through our application or website.
-      </p>
-    ),
-  },
+
 ];

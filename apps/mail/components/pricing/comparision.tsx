@@ -1,10 +1,182 @@
-import { Plus, PurpleThickCheck, ThickCheck } from '../icons/icons';
+import { Check, Minus } from 'lucide-react';
 import { useSession, signIn } from '@/lib/auth-client';
 import { useBilling } from '@/hooks/use-billing';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
+import React from 'react';
 
-export default function Comparision() {
+const COMPARISON_DATA = {
+  categories: [
+    {
+      name: "Core Features",
+      features: [
+        {
+          name: "Smart Zero Assistant",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "Auto Labeling",
+          hobby: true,
+          pro: true,
+          enterprise: true
+        },
+        {
+          name: "Quick OTP & Magic Links Emails",
+          hobby: true,
+          pro: true,
+          enterprise: true
+        },
+        {
+          name: "Account Connections",
+          hobby: "2",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        }
+      ]
+    },
+    {
+      name: "AI & Automation",
+      features: [
+        {
+          name: "Zero Agent",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "AI Email Drafts",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "Auto Responder",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "Thread Summaries",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        }
+      ]
+    },
+    {
+      name: "Productivity & Actions",
+      features: [
+        {
+          name: "Bulk Actions",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "Shortcuts",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "Inbox Actions",
+          hobby: "Limited",
+          pro: "Unlimited",
+          enterprise: "Unlimited"
+        },
+        {
+          name: "Calendar Integration",
+          hobby: "Limited",
+          pro: "Full Integration",
+          enterprise: "Full Integration"
+        }
+      ]
+    },
+    {
+      name: "Analytics & Insights",
+      features: [
+        {
+          name: "Analytics",
+          hobby: "Limited",
+          pro: "Full Analytics",
+          enterprise: "Full Analytics"
+        },
+        {
+          name: "Team Analytics & Usage Insights",
+          hobby: false,
+          pro: false,
+          enterprise: true
+        }
+      ]
+    },
+    {
+      name: "Enterprise Features",
+      features: [
+        {
+          name: "Shared Inboxes",
+          hobby: false,
+          pro: false,
+          enterprise: true
+        },
+        {
+          name: "Advanced Admin Security & Permissions",
+          hobby: false,
+          pro: false,
+          enterprise: true
+        },
+        {
+          name: "Single Sign-On (SSO)",
+          hobby: false,
+          pro: false,
+          enterprise: true
+        },
+        {
+          name: "Data Residency & Compliance Options",
+          hobby: false,
+          pro: false,
+          enterprise: true
+        },
+        {
+          name: "Priority Support",
+          hobby: false,
+          pro: false,
+          enterprise: true
+        }
+      ]
+    }
+  ],
+  pricing: {
+    hobby: { monthly: "Free, Forever.", annual: "Free, Forever." },
+    pro: { monthly: "$20 / month", annual: "$16 / month" },
+    enterprise: { monthly: "Custom", annual: "Custom" }
+  }
+};
+
+const FeatureValue = ({ value }: { value: boolean | string }) => {
+  if (typeof value === 'boolean') {
+    return (
+      <div className="flex justify-center">
+        {value ? (
+          <Check className="h-5 w-5 text-white/40" />
+        ) : (
+          <Minus className="h-5 w-5 text-white/40" />
+        )}
+      </div>
+    );
+  }
+  
+  return (
+    <div className="flex justify-center">
+      <span className="text-sm text-white/80 font-medium">
+        {value}
+      </span>
+    </div>
+  );
+};
+
+export default function Comparison() {
   const { attach } = useBilling();
   const { data: session } = useSession();
   const navigate = useNavigate();
@@ -37,351 +209,119 @@ export default function Comparision() {
       );
     }
   };
+
   return (
-    <div className="relative mx-auto mt-20 hidden max-w-[1200px] flex-col items-center justify-center md:flex">
-      <Plus className="absolute left-[-5px] top-[-6px] mb-4 h-3 w-3 fill-white" />
-      <Plus className="absolute bottom-[-21px] left-[-5px] mb-4 h-3 w-3 fill-white" />
-      <Plus className="absolute right-[-5px] top-[-6px] mb-4 h-3 w-3 fill-white" />
-      <Plus className="absolute bottom-[-21px] right-[-5px] mb-4 h-3 w-3 fill-white" />
-      <div className="inline-flex items-start justify-start self-stretch border border-white/5">
-        <div className="inline-flex flex-1 flex-col items-start justify-start">
-          <div className="flex h-52 flex-col items-start justify-start gap-2 self-stretch border-b border-white/5 p-8">
-            <div className="flex flex-col items-start justify-start gap-2">
-              <div className="justify-center text-lg font-semibold leading-7 text-white">
-                Compare Features
-              </div>
-            </div>
-            <p className="text-sm text-white/70">Checkout what you get in each of our plans</p>
-          </div>
-          <div className="flex flex-col items-start justify-start self-stretch pb-6">
-            <div className="inline-flex h-16 items-center justify-start gap-[5px] self-stretch px-8">
-              <div className="justify-center text-lg leading-normal text-white">Feature</div>
-              <div className="relative top-[5px] h-5 w-5">
-                <p className="relative flex h-3 w-3 items-center justify-center rounded-full bg-white/50 text-[11px] font-medium text-black">
-                  ?
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col items-start justify-start self-stretch">
-              <div className="flex flex-col items-start justify-center gap-1 self-stretch px-8 py-[15.5px]">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    Email Connections{' '}
-                  </div>
+    <div className="mx-auto w-full max-w-[1000px] px-4 sm:px-6 md:px-0">
+      <div className="mb-12 text-center">
+        <h2 className="text-4xl font-normal text-white mb-4">
+          Compare Features
+        </h2>
+        <p className="text-lg text-white/60">
+          See what's included in each plan
+        </p>
+      </div>
+
+      <div className="">
+        <table className="w-full border-collapse">
+          {/* Header */}
+          <thead>
+            <tr className="border-b border-white/10">
+              <th className="text-left py-6 px-6 text-lg font-medium text-white w-1/4">
+                Features
+              </th>
+              <th className="text-center py-6 px-6 w-1/4">
+                <div className="text-xl font-semibold text-white mb-2">Hobby</div>
+                <div className="text-sm text-white/60">Free, Forever.</div>
+              </th>
+              <th className="text-center py-6 px-6 w-1/4">
+                <div className="text-xl font-semibold text-white mb-2">Pro</div>
+                <div className="text-sm text-white/60">$20 / month</div>
+              </th>
+              <th className="text-center py-6 px-6 w-1/4">
+                <div className="text-xl font-semibold text-white mb-2">Enterprise</div>
+                <div className="text-sm text-white/60">Custom</div>
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {COMPARISON_DATA.categories.map((category, categoryIndex) => (
+              <React.Fragment key={category.name}>
+                {/* Category Header */}
+                <tr>
+                  <td colSpan={4} className="py-8 px-6">
+                    <h3 className="text-lg font-semibold text-white">
+                      {category.name}
+                    </h3>
+                  </td>
+                </tr>
+                
+                {/* Category Features */}
+                {category.features.map((feature, featureIndex) => (
+                  <tr 
+                    key={feature.name}
+                    className="border-b border-white/5 hover:bg-white/[0.02] transition-colors"
+                  >
+                    <td className="py-4 px-6 text-white/80">
+                      {feature.name}
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <FeatureValue value={feature.hobby} />
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <FeatureValue value={feature.pro} />
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <FeatureValue value={feature.enterprise} />
+                    </td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+
+            {/* Action Buttons Row */}
+            <tr>
+              <td className="py-8 px-6">
+                <div className="text-lg font-medium text-white">
+                  Get Started
                 </div>
-              </div>
-              <div className="flex flex-col items-start justify-center gap-1 self-stretch px-8 py-[15.5px]">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    AI-powered Chat with Inbox{' '}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col items-start justify-center gap-1 self-stretch px-8 py-[15.5px]">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    Labeling{' '}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col items-start justify-center gap-1 self-stretch px-8 py-[15.5px]">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    AI Email Writing{' '}
-                  </div>
-                </div>
-              </div>
-              <div className="flex h-14 flex-col items-start justify-center gap-1 self-stretch px-8">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    AI-generated Summaries{' '}
-                  </div>
-                </div>
-              </div>
-              <div className="flex h-14 flex-col items-start justify-center gap-1 self-stretch px-8">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    Customer Support{' '}
-                  </div>
-                </div>
-              </div>
-              <div className="flex h-14 flex-col items-start justify-center gap-1 self-stretch px-8">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    Private Discord Community Access{' '}
-                  </div>
-                </div>
-              </div>
-              <div className="flex h-14 flex-col items-start justify-center gap-1 self-stretch px-8">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">Price</div>
-                </div>
-              </div>
-              <div className="flex h-14 flex-col items-start justify-center gap-1 self-stretch px-8">
-                <div className="inline-flex h-6 items-center justify-start self-stretch">
-                  <div className="justify-center text-sm leading-tight text-white/70">
-                    Best For{' '}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="inline-flex flex-1 flex-col items-center justify-start">
-          <div className="flex flex-col items-start justify-start gap-14 self-stretch border-b border-l border-r border-white/5 bg-[#121212] px-8 py-[23.5px]">
-            <div className="flex flex-col items-start justify-start gap-5 self-stretch">
-              <div className="flex flex-col items-start justify-center gap-3 self-stretch">
-                <div className="inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-lg bg-yellow-950 p-2">
-                  <div className="relative h-6 w-6 overflow-hidden">
-                    <img
-                      src="/lock.svg"
-                      alt="lock"
-                      className="h-full w-full"
-                      height={24}
-                      width={24}
-                    />
-                  </div>
-                </div>
-                <div className="justify-center text-2xl font-semibold leading-loose text-white">
-                  Free Plan
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  if (session) {
-                    // User is logged in, redirect to inbox
-                    navigate('/mail/inbox');
-                  } else {
-                    // User is not logged in, show sign-in dialog
-                    toast.promise(
+              </td>
+              <td className="py-8 px-6 text-center">
+                <button
+                  onClick={() => {
+                    if (session) {
+                      navigate('/mail/inbox');
+                    } else {
                       signIn.social({
                         provider: 'google',
                         callbackURL: `${window.location.origin}/mail`,
-                      }),
-                      {
-                        error: 'Login redirect failed',
-                      },
-                    );
-                  }
-                }}
-                className="inline-flex h-[40px] items-center justify-center gap-2.5 self-stretch overflow-hidden rounded-lg bg-gradient-to-l from-white/0 to-white/10 p-[3.5px] outline outline-1 outline-offset-[-1px] outline-white/10"
-              >
-                <div className="flex items-center justify-center">
-                  <div className="justify-start text-center text-base font-semibold leading-none text-white/80">
-                    Get Started For Free
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-          <div className="flex flex-col items-start justify-start self-stretch pb-6">
-            <div className="inline-flex h-16 items-center justify-start gap-[5px] self-stretch px-4" />
-            <div className="flex flex-col items-start justify-start self-stretch">
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-white/20 p-1.5">
-                    <ThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-white">
-                    One email connection
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-white/20 p-1.5">
-                    <ThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-white">
-                    Available (basic features)
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-white/20 p-1.5">
-                    <ThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-white">
-                    Basic labeling
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-white/20 p-1.5">
-                    <ThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-white">
-                    Limited writing capability
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="relative h-6 w-6">
-                  <div className="absolute left-[4.80px] top-[12px] h-3.5 w-0 origin-top-left -rotate-90 outline outline-2 outline-offset-[-1px] outline-white/50" />
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="relative h-6 w-6">
-                  <div className="absolute left-[4.80px] top-[12px] h-3.5 w-0 origin-top-left -rotate-90 outline outline-2 outline-offset-[-1px] outline-white/50" />
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="relative h-6 w-6">
-                  <div className="absolute left-[4.80px] top-[12px] h-3.5 w-0 origin-top-left -rotate-90 outline outline-2 outline-offset-[-1px] outline-white/50" />
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-white/20 p-1.5">
-                    <ThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-white">
-                    Free
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-white/20 p-1.5">
-                    <ThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-white">
-                    Individuals, light use
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="inline-flex flex-1 flex-col items-center justify-start">
-          <div className="flex flex-col items-start justify-start gap-14 self-stretch border-b border-white/5 bg-[#121212] px-8 py-[23.5px]">
-            <div className="flex flex-col items-start justify-start gap-5 self-stretch">
-              <div className="flex flex-col items-start justify-center gap-3 self-stretch">
-                <div className="inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-lg bg-[#3F2776] p-2">
-                  <div className="relative h-6 w-6 overflow-hidden">
-                    <img
-                      src="purple-zap.svg"
-                      alt="purple-zap"
-                      className="h-full w-full"
-                      height={24}
-                      width={24}
-                    />
-                  </div>
-                </div>
-                <div className="justify-center text-2xl font-semibold leading-loose text-white">
-                  Zero Pro
-                </div>
-              </div>
-              <button
-                onClick={handleUpgrade}
-                className="inline-flex h-[40px] items-center justify-center gap-2.5 self-stretch overflow-hidden rounded-lg bg-gradient-to-l from-white/0 to-white/10 p-[3.5px] outline outline-1 outline-offset-[-1px] outline-white/10"
-              >
-                <div className="flex items-center justify-center">
-                  <div className="justify-start text-center text-base font-semibold leading-none text-white/80">
-                    Start 7 day free trial
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-          <div className="flex flex-col items-start justify-start self-stretch pb-6">
-            <div className="inline-flex h-16 items-center justify-start gap-[5px] self-stretch px-4" />
-            <div className="flex flex-col items-start justify-start self-stretch">
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Unlimited connections
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Available (full, advanced features)
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Auto labeling
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    One-click writing & replies
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Instant thread summaries
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Priority support
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Access included
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    $20 per month
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-14 items-center justify-start gap-2 self-stretch px-8">
-                <div className="flex items-center justify-start gap-3">
-                  <div className="flex h-6 w-6 items-start justify-start gap-4 rounded-full bg-violet-400/20 p-1.5">
-                    <PurpleThickCheck className="h-3 w-3" />
-                  </div>
-                  <div className="justify-center text-base font-normal leading-normal text-violet-400">
-                    Professionals, heavy email users
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+                      });
+                    }
+                  }}
+                  className="px-6 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white font-medium transition-colors"
+                >
+                  Download
+                </button>
+              </td>
+              <td className="py-8 px-6 text-center">
+                <button
+                  onClick={handleUpgrade}
+                  className="px-6 py-2 bg-white text-black hover:bg-white/90 font-medium rounded-lg transition-colors"
+                >
+                  Select Plan
+                </button>
+              </td>
+              <td className="py-8 px-6 text-center">
+                <button
+                  onClick={() => window.open('https://cal.com/team/0/chat', '_blank')}
+                  className="px-6 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white font-medium transition-colors"
+                >
+                  Contact us
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

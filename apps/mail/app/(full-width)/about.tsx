@@ -1,159 +1,170 @@
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { Github, Mail, ArrowLeft } from 'lucide-react';
-import { Navigation } from '@/components/navigation';
+import { useTheme } from 'next-themes';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import Footer from '@/components/home/footer';
 import React from 'react';
 
 export default function AboutPage() {
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    setTheme('dark');
+  }, [setTheme]);
+
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-auto bg-white dark:bg-[#111111]">
-      <Navigation />
-      <div className="relative z-10 flex flex-grow flex-col">
-        <div className="absolute right-4 top-6 md:left-8 md:right-auto md:top-8">
-          <a href="/">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-gray-600 hover:text-gray-900 dark:text-white dark:hover:text-white/80"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </a>
-        </div>
+    <main className="relative flex flex-col overflow-x-hidden bg-[#000000] px-2 flex-1">
+      <article className="mt-2 flex flex-col items-center flex-1">
+        <div className="w-full max-w-[800px] mx-auto flex flex-col px-5">
+          
+          {/* Header */}
+          <header className="mb-16 mt-16 text-center">
+            <h1 className="text-4xl md:text-6xl text-white mb-3 leading-tight">
+              Zero allows people to control their inbox.
+            </h1>
+            <p className="text-xl text-white/60 mb-8 leading-relaxed max-w-3xl mx-auto">
+              Zero's app gives people the ability to not lose control of their inbox with ai.
+            </p>
 
-        <div className="container mx-auto max-w-4xl px-4 py-16">
-          <Card className="overflow-hidden rounded-xl border-none bg-gray-50/80 dark:bg-transparent">
-            <CardHeader className="space-y-4 px-8 py-8">
-              <div className="space-y-2 text-center">
-                <CardTitle className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl dark:text-white">
-                  About Us
-                </CardTitle>
-              </div>
-            </CardHeader>
 
-            <div className="space-y-8 p-8">
-              {sections.map((section) => (
-                <div key={section.title} className="p-6">
-                  <h2 className="mb-4 text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                    {section.title}
-                  </h2>
-                  <div className="prose prose-sm prose-a:text-blue-600 hover:prose-a:text-blue-800 dark:prose-a:text-blue-400 dark:hover:prose-a:text-blue-300 max-w-none text-gray-600 dark:text-white/80">
-                    {section.content}
-                  </div>
-                </div>
-              ))}
+            
+            {/* Hero Image */}
+            <div className="mb-52 aspect-[16/9] relative overflow-hidden bg-white/5 rounded-xl border max-w-3xl mx-auto">
+              <img
+                src="/blog/images/girl.png"
+                alt="Zero gradient illustration"
+                className="w-full h-full object-cover"
+              />
             </div>
-          </Card>
-        </div>
+          </header>
 
-        <Footer />
-      </div>
-    </div>
+          {/* Our Story */}
+         
+          {/* Why Zero  */}
+          <section className="mb-52 flex flex-col items-center justify-center">
+            <h2 className="text-3xl text-white mb-4 text-center">Why We Built Zero</h2>
+            <div className="prose prose-invert prose-lg text-white/70 leading-relaxed max-w-lg">
+              <p className="text-left text-lg mb-8">
+                Zero's goal is to bring AI to email the right way. But it wasn't always that way. Zero started as an open source project to help people self host their email.
+              </p>
+              
+              <p className="text-left text-lg mb-8">
+                However, as we continued to build Zero, we noticed that our users wanted more. They wanted to something to help them control their inbox and get more done.
+              </p>
+              <p className="text-left text-lg">
+                Since then, we've been working to bring AI to email the right way and build the first agentic inbox. We've built a team of experts in AI and email to help us achieve our mission!
+              </p>
+            </div>
+          </section>
+
+          {/* Our Team */}
+          {/* <section className="mb-16">
+            <h2 className="text-3xl font-bold text-white mb-6 text-center">Our Team</h2>
+            
+            <div className="text-center mb-8">
+              <p className="text-white/70 text-lg mb-6">
+                Zero is a team with one mission: bring agents to email.
+              </p>
+              
+              <Button
+                className="rounded-[10px] px-4 py-1 h-9 bg-white text-[14px] font-medium leading-[1.43] text-[#262626] hover:bg-white/90 transition-colors"
+                onClick={() => window.location.href = '/team'}
+              >
+                Meet the rest of the team
+              </Button>
+            </div>
+            
+  
+            <div className="aspect-[16/9] relative overflow-hidden bg-white/5 rounded-xl border max-w-2xl mx-auto">
+              <img
+                src="/founders.jpg"
+                alt="Adam and Nizar, Zero founders"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <p className="text-xs text-white/50 text-center mt-3">
+              Adam and Nizar at Y Combinator Demo Day
+            </p>
+          </section> */}
+
+          {/* Investors Section */}
+          <section className="mb-40">
+            <h2 className="text-3xl text-white mb-2 text-center">Backed by The Best Investors</h2>
+            <div className="prose prose-invert prose-lg text-white/70 leading-relaxed max-w-none mb-8">
+              <p className="text-center">
+                We're lucky to work with and be backed by some of the most incredible investors in the world. 
+              </p>
+            </div>
+
+            {/* Investors Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 justify-items-center">
+              {investors.map((investor, index) => {
+                const totalInvestors = investors.length;
+                const investorsPerRow = 4;
+                const lastRowCount = totalInvestors % investorsPerRow;
+                const isInLastRow = index >= totalInvestors - lastRowCount;
+                
+                let gridPositionClass = '';
+                if (isInLastRow && lastRowCount === 2) {
+                  const positionInLastRow = index - (totalInvestors - lastRowCount);
+                  if (positionInLastRow === 0) gridPositionClass = 'lg:col-start-2';
+                  if (positionInLastRow === 1) gridPositionClass = 'lg:col-start-3';
+                }
+
+                return (
+                <div key={investor.name} className={`flex flex-col items-center text-center ${gridPositionClass}`}>
+                  <div className="w-20 h-20 rounded-full overflow-hidden bg-white/5 mb-4 flex items-center justify-center">
+                    {investor.image ? (
+                      <img 
+                        src={investor.image} 
+                        alt={investor.name}
+                        className="w-full h-full object-cover grayscale"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                        {investor.name.split(' ').map(n => n[0]).join('')}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-sm font-medium text-white/90 mb-1">
+                    {investor.name}
+                  </div>
+                  {investor.title && (
+                    <div className="text-xs text-white/60">
+                      {investor.title}
+                    </div>
+                  )}
+                </div>
+                );
+              })}
+            </div>
+          </section>
+          
+        </div>
+      </article>
+    </main>
   );
 }
 
-const sections = [
-  {
-    title: 'Our Mission',
-    content: (
-      <p>
-        Zero is an AI-powered email client that manages your inbox, so you don't have to. We help
-        busy professionals unclutter their inboxes, prioritize important messages, summarize
-        conversations, complete tasks, and even chat with their inbox — letting them spend less time
-        managing email and more time getting things done.
-      </p>
-    ),
-  },
-  {
-    title: 'Why We Started',
-    content: (
-      <p>
-        We started Zero because we were frustrated that email — the most-used communication tool in
-        the world — hasn't meaningfully evolved in decades. Despite countless new apps, none
-        actually solve the real problem: helping you finish what you intend to do. We realized the
-        real solution isn't just a new interface — it's AI acting like a true assistant inside your
-        inbox.
-      </p>
-    ),
-  },
-  {
-    title: 'Open Source',
-    content: (
-      <div className="space-y-4">
-        <p>
-          Zero is built on the principles of transparency and community collaboration. Our entire
-          codebase is open source, allowing anyone to:
-        </p>
-        <ul className="ml-4 list-disc space-y-2">
-          <li>Review our code for security and privacy</li>
-          <li>Contribute improvements and new features</li>
-          <li>Self-host their own instance of Zero</li>
-          <li>Learn from and build upon our work</li>
-        </ul>
-        <p>
-          We believe that email is too important to be controlled by a single entity. By being open
-          source, we ensure that Zero remains transparent, trustworthy, and accessible to everyone.
-        </p>
-      </div>
-    ),
-  },
-  {
-    title: 'Our Journey',
-    content: (
-      <div className="space-y-4">
-        <p>
-          We launched our early access program and have already seen strong demand, with over 15,000
-          signups in just under 3 months. What we found is that users want an assistant that
-          streamlines their inbox, providing features to summarize emails, compose responses, and
-          take necessary actions.
-        </p>
-        <p>
-          The opportunity is massive: over 4 billion people use email daily, and most still manage
-          it manually. Zero is poised to fundamentally change the way the world deals with
-          communication and tasks — and we're just getting started.
-        </p>
-      </div>
-    ),
-  },
-  {
-    title: 'Our Founders',
-    content: (
-      <div className="space-y-4">
-        <p>
-          Adam and Nizar, the cofounders of Zero, met through family friends. Coming from
-          backgrounds in product design and software engineering, we both felt the pain of drowning
-          in email firsthand while trying to build and grow companies.
-        </p>
-        <p>
-          We're driven by a shared belief that email should help you move faster, not slow you down.
-        </p>
-      </div>
-    ),
-  },
-  {
-    title: 'Contact',
-    content: (
-      <div className="space-y-3">
-        <p>Want to learn more about Zero? Get in touch:</p>
-        <div className="flex flex-col space-y-2">
-          <a
-            href="mailto:founders@0.email"
-            className="inline-flex items-center text-blue-400 hover:text-blue-300"
-          >
-            <Mail className="mr-2 h-4 w-4" />
-            founders@0.email
-          </a>
-          <a
-            href="https://github.com/Mail-0/Zero"
-            className="inline-flex items-center text-blue-400 hover:text-blue-300"
-          >
-            <Github className="mr-2 h-4 w-4" />
-            Open an issue on GitHub
-          </a>
-        </div>
-      </div>
-    ),
-  },
+// Our investors
+const investors = [
+  { name: '1984 Ventures', title: '', image: '/investors/1984.png' },
+  { name: 'Pioneer Fund', title: '', image: '/investors/pioneer.jpg' },
+  { name: 'Lobster Capital', title: '', image: '/investors/lobster capital.jpeg' },
+  { name: 'Dane Knecht', title: 'CTO of Cloudflare', image: '/investors/dane.jpg' },
+  { name: 'Zeno Rocha', title: 'Founder of Resend', image: '/investors/zeno.jpg' },
+  { name: 'Theo Browne', title: 'Founder of T3 Chat', image: '/investors/theo.jpg' },
+  { name: 'Habib Haddad', title: 'E14 Fund', image: '/investors/habib haddad.jpeg' },
+  { name: 'Archie McKenzie', title: 'Founder of General Translations', image: '/investors/archie.jpg' },
+  { name: 'Grey Baker', title: 'Founder of Dependabot', image: '/investors/grey barker.jpg' },
+  { name: 'Stefan Lederer', title: 'CEO of Bitmovin', image: '/investors/stefan.jpeg' },
+  { name: 'Andres KG', title: 'Founder of The Network', image: '/investors/Andres.jpg' },
+  { name: 'Britton Winterrose', title: 'Microsoft, Startups', image: '/investors/britton.jpg' },
+  { name: 'Ted Stiefel', title: 'Angel Investor', image: '/investors/Ted Stiefel.jpg' },
+  { name: 'Ryan Vogel', title: 'Angel Investor', image: '/investors/ryan.jpg' },
+  { name: 'Raffael Vendrametto', title: 'Angel Investor', image: '/investors/raffael.jpeg' },
+  { name: 'Zhihao Ni', title: 'Angel Investor', image: '/investors/Zhihao Ni.jpg' },
+  { name: 'Adam Cohen Hillel', title: 'Angel Investor', image: '/investors/adam-cohen.jpg' },
+  { name: 'Moataz Soliman', title: 'Angel Investor', image: '/investors/Moataz Soliman.jpeg' },
+  
 ];
+
+

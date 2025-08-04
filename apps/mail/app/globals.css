@@ -393,3 +393,218 @@
 .style-scrollbar {
   @apply scrollbar scrollbar-w-0 scrollbar-thumb-accent/40 scrollbar-track-transparent hover:scrollbar-thumb-accent scrollbar-thumb-rounded-full;
 }
+
+/* Hero section grid decorations */
+.hero-grid-decorations {
+  position: relative;
+}
+
+.hero-grid-decorations::before,
+.hero-grid-decorations::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-image: 
+    linear-gradient(to right, #525252 0px, #525252 1px, transparent 1px, transparent 100%),
+    linear-gradient(to bottom, #525252 0px, #525252 1px, transparent 1px, transparent 100%);
+  background-size: 10px 10px;
+  background-repeat: no-repeat;
+  background-position: center;
+  z-index: 1;
+}
+
+/* Top left plus */
+.hero-grid-decorations::before {
+  top: -5px;
+  left: -5px;
+  background-image: 
+    linear-gradient(to right, transparent 4px, #525252 4px, #525252 6px, transparent 6px),
+    linear-gradient(to bottom, transparent 4px, #525252 4px, #525252 6px, transparent 6px);
+}
+
+/* Top right plus */
+.hero-grid-decorations::after {
+  top: -5px;
+  right: -5px;
+  background-image: 
+    linear-gradient(to right, transparent 4px, #525252 4px, #525252 6px, transparent 6px),
+    linear-gradient(to bottom, transparent 4px, #525252 4px, #525252 6px, transparent 6px);
+}
+
+/* Additional plus signs for bottom corners */
+.hero-grid-decorations {
+  &::before {
+    box-shadow: 
+      0 calc(100% + 10px) 0 0 transparent,
+      calc(100% + 10px) 0 0 0 transparent,
+      calc(100% + 10px) calc(100% + 10px) 0 0 transparent;
+  }
+}
+
+/* Hero section with four corner plus signs */
+.hero-plus-grid {
+  position: relative;
+}
+
+.hero-plus-grid::before,
+.hero-plus-grid::after {
+  content: '+';
+  position: absolute;
+  font-size: 16px;
+  color: #525252;
+  font-weight: 300;
+  line-height: 1;
+  z-index: 10;
+  font-family: monospace;
+}
+
+/* Top left plus */
+.hero-plus-grid::before {
+  top: -20px;
+  left: -20px;
+}
+
+/* Top right plus */
+.hero-plus-grid::after {
+  top: -20px;
+  right: -20px;
+}
+
+/* Bottom corners using box-shadow */
+.hero-plus-grid::before,
+.hero-plus-grid::after {
+  text-shadow: 
+    0 calc(100vh - 60px) 0 #525252;
+}
+
+/* Hero section with corner plus signs and connecting border */
+.hero-plus-corners {
+  position: relative;
+  border: 1px solid #525252;
+  padding: 40px 20px;
+}
+
+/* Top left plus */
+.hero-plus-corners::before {
+  content: '+';
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  font-size: 16px;
+  color: #525252;
+  font-family: monospace;
+  z-index: 10;
+  background: #000000;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Top right plus */
+.hero-plus-corners::after {
+  content: '+';
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  font-size: 16px;
+  color: #525252;
+  font-family: monospace;
+  z-index: 10;
+  background: #000000;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Add bottom corner plus signs using box-shadow */
+.hero-plus-corners::before {
+  box-shadow: 
+    0 calc(100% + 20px) 0 0 #525252;
+}
+
+.hero-plus-corners::after {
+  box-shadow: 
+    0 calc(100% + 20px) 0 0 #525252;
+}
+
+/* Hero grid with transparent border - plus signs handled in HTML */
+.hero-grid-border {
+  position: relative;
+  border: 1px solid rgba(82, 82, 82, 0.4);
+  padding: 60px 40px;
+}
+
+/* Reusable class for corner plus signs */
+.corner-plus {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  font-family: monospace;
+  font-size: 24px;
+  color: #525252;
+}
+
+/* Hero background gradient */
+.hero-background-gradient {
+  position: absolute;
+  inset: 0;
+  z-index: -10;
+  opacity: 0.5;
+  background-image: url('/background-gradient.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Simplified approach - four corner plus signs */
+.hero-corners {
+  position: relative;
+}
+
+.hero-corners::before,
+.hero-corners::after {
+  content: '';
+  position: absolute;
+  width: 1px;
+  height: 10px;
+  background-color: #525252;
+  z-index: 1;
+}
+
+.hero-corners::before {
+  top: -5px;
+  left: -5px;
+  box-shadow: 
+    4px 0 0 0 #525252,
+    0 calc(100% + 10px) 0 0 #525252,
+    4px calc(100% + 10px) 0 0 #525252,
+    calc(100% + 10px) 0 0 0 #525252,
+    calc(100% + 14px) 0 0 0 #525252,
+    calc(100% + 10px) calc(100% + 10px) 0 0 #525252,
+    calc(100% + 14px) calc(100% + 10px) 0 0 #525252;
+}
+
+.hero-corners::after {
+  top: -1px;
+  left: -1px;
+  width: 10px;
+  height: 1px;
+  box-shadow: 
+    0 4px 0 0 #525252,
+    calc(100% + 2px) 0 0 0 #525252,
+    calc(100% + 2px) 4px 0 0 #525252,
+    0 calc(100% + 6px) 0 0 #525252,
+    4px calc(100% + 6px) 0 0 #525252,
+    calc(100% + 2px) calc(100% + 6px) 0 0 #525252,
+    calc(100% + 6px) calc(100% + 6px) 0 0 #525252;
+}

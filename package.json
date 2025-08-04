@@ -49,6 +49,7 @@
   "dependencies": {
     "@dub/analytics": "0.0.27",
     "@dub/better-auth": "0.0.3",
+    "classnames": "2.5.1",
     "dub": "0.63.7"
   }
 }

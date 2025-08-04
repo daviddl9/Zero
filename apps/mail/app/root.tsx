@@ -198,33 +198,33 @@ function NotFound() {
   const navigate = useNavigate();
 
   return (
-    <div className="dark:bg-background flex w-full items-center justify-center bg-white text-center">
-      <div className="flex-col items-center justify-center md:flex dark:text-gray-100">
-        <div className="relative">
-          <h1 className="text-muted-foreground/20 select-none text-[150px] font-bold">404</h1>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-            <AlertCircle className="text-muted-foreground h-20 w-20" />
-          </div>
+    <div className="flex h-screen w-full items-center justify-center bg-black text-center px-4">
+      <div className="hero-grid-border w-full max-w-[1200px] flex flex-col items-center justify-center min-h-[600px] py-16">
+        {/* All four corner plus signs */}
+        <div className="corner-plus -top-[14.8px] -left-[14.6px]">+</div>
+        <div className="corner-plus -top-[14.8px] -right-[14.2px]">+</div>
+        <div className="corner-plus -bottom-[13.8px] -left-[14.5px]">+</div>
+        <div className="corner-plus -bottom-[13.8px] -right-[14.5px]">+</div>
+
+        {/* Logo */}
+        <div className="mb-8">
+          <img 
+            src="/white-icon.svg" 
+            alt="Zero Logo" 
+            className="h-20 w-20 mx-auto"
+          />
         </div>
 
-        {/* Message */}
-        <div className="space-y-2">
-          <h2 className="text-2xl font-semibold tracking-tight">
-            {m['pages.error.notFound.title']()}
-          </h2>
-          <p className="text-muted-foreground">{m['pages.error.notFound.description']()}</p>
-        </div>
-
-        {/* Buttons */}
-        <div className="mt-2 flex justify-center gap-2">
-          <Button
-            variant="outline"
+        {/* 404 Message */}
+        <div className="mb-8 text-center space-y-2">
+          <h1 className="text-3xl font-medium text-white ">404: Page not found</h1>
+          <p className="text-white/60 text-sm">This page does not exist.</p>
+          <button
             onClick={() => navigate(-1)}
-            className="text-muted-foreground gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/20 text-white text-sm hover:bg-white/5 transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
-            {m['pages.error.notFound.goBack']()}
-          </Button>
+            Go Back
+          </button>
         </div>
       </div>
     </div>

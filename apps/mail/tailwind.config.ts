@@ -3,6 +3,7 @@ import sharedConfig from '../../packages/tailwind-config/tailwind.config';
 import defaultTheme from 'tailwindcss/defaultTheme';
 import scrollbar from 'tailwind-scrollbar';
 import animate from 'tailwindcss-animate';
+import { blackA, mauve, violet, indigo, purple } from '@radix-ui/colors';
 
 import type { Config } from 'tailwindcss';
 
@@ -17,6 +18,11 @@ export default {
   theme: {
     extend: {
       colors: {
+        ...blackA,
+        ...mauve,
+        ...violet,
+        ...purple,
+        ...indigo,
         darkBackground: '#141414',
         lightBackground: '#FFFFFF',
         offsetDark: '#0A0A0A',
@@ -138,6 +144,14 @@ export default {
             opacity: '1',
           },
         },
+        fadeOut: {
+          '0%': {
+            opacity: '1',
+          },
+          '100%': {
+            opacity: '0',
+          },
+        },
         shine: {
           from: {
             backgroundPosition: '200% 0',
@@ -178,6 +192,46 @@ export default {
           from: { 'stroke-dashoffset': '332', opacity: '0' },
           to: { opacity: '1' },
         },
+        enterFromRight: {
+          from: { opacity: '0', transform: 'translateX(200px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
+        enterFromLeft: {
+          from: { opacity: '0', transform: 'translateX(-200px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
+        exitToRight: {
+          from: { opacity: '1', transform: 'translateX(0)' },
+          to: { opacity: '0', transform: 'translateX(200px)' },
+        },
+        exitToLeft: {
+          from: { opacity: '1', transform: 'translateX(0)' },
+          to: { opacity: '0', transform: 'translateX(-200px)' },
+        },
+        scaleIn: {
+          from: { opacity: '0', transform: 'rotateX(-10deg) scale(0.9)' },
+          to: { opacity: '1', transform: 'rotateX(0deg) scale(1)' },
+        },
+        scaleOut: {
+          from: { opacity: '1', transform: 'rotateX(0deg) scale(1)' },
+          to: { opacity: '0', transform: 'rotateX(-10deg) scale(0.95)' },
+        },
+        slideUpAndFade: {
+          from: { opacity: '0', transform: 'translateY(2px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideRightAndFade: {
+          from: { opacity: '0', transform: 'translateX(-2px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
+        slideDownAndFade: {
+          from: { opacity: '0', transform: 'translateY(-2px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideLeftAndFade: {
+          from: { opacity: '0', transform: 'translateX(2px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
@@ -189,6 +243,18 @@ export default {
         'accordion-up': 'accordion-up 0.2s ease-out',
         gauge_fadeIn: 'gauge_fadeIn 1s ease forwards',
         gauge_fill: 'gauge_fill 1s ease forwards',
+        scaleIn: 'scaleIn 200ms ease',
+        scaleOut: 'scaleOut 200ms ease',
+        fadeIn: 'fadeIn 200ms ease',
+        fadeOut: 'fadeOut 200ms ease',
+        enterFromLeft: 'enterFromLeft 250ms ease',
+        enterFromRight: 'enterFromRight 250ms ease',
+        exitToLeft: 'exitToLeft 250ms ease',
+        exitToRight: 'exitToRight 250ms ease',
+        slideUpAndFade: 'slideUpAndFade 300ms cubic-bezier(0.16, 0, 0.13, 1)',
+        slideDownAndFade: 'slideDownAndFade 300ms cubic-bezier(0.16, 0, 0.13, 1)',
+        slideRightAndFade: 'slideRightAndFade 300ms cubic-bezier(0.16, 0, 0.13, 1)',
+        slideLeftAndFade: 'slideLeftAndFade 300ms cubic-bezier(0.16, 0, 0.13, 1)',
       },
     },
   },
@@ -197,6 +263,13 @@ export default {
     addVariablesForColors,
     function ({ matchUtilities, theme }: any) {
       matchUtilities({ values: flattenColorPalette(theme('backgroundColor')), type: 'color' });
+    },
+    function ({ matchUtilities }: any) {
+      matchUtilities({
+        perspective: (value: string) => ({
+          perspective: value,
+        }),
+      });
     },
     scrollbar({
       nocompatible: true,

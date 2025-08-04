@@ -24,6 +24,24 @@ export interface EnhancedShortcut extends Shortcut {
 }
 
 /**
+ * Check if we're running in a browser environment
+ */
+function isBrowser(): boolean {
+  return typeof window !== 'undefined' && typeof navigator !== 'undefined';
+}
+
+/**
+ * Check if the current platform is Mac (with fallback for SSR)
+ */
+function isMacPlatform(): boolean {
+  if (!isBrowser()) {
+    // Fallback to a reasonable default for SSR
+    return false;
+  }
+  return navigator.platform.includes('Mac');
+}
+
+/**
  * Convert key codes to user-friendly display keys using keyboard layout mapping
  */
 export function getDisplayKeysForShortcut(shortcut: Shortcut): string[] {
@@ -33,14 +51,14 @@ export function getDisplayKeysForShortcut(shortcut: Shortcut): string[] {
     // Handle special modifiers first
     switch (key.toLowerCase()) {
       case 'mod':
-        return navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
+        return isMacPlatform() ? '⌘' : 'Ctrl';
       case 'meta':
         return '⌘';
       case 'ctrl':
       case 'control':
         return 'Ctrl';
       case 'alt':
-        return navigator.platform.includes('Mac') ? '⌥' : 'Alt';
+        return isMacPlatform() ? '⌥' : 'Alt';
       case 'shift':
         return '⇧';
       case 'escape':

@@ -1,0 +1,25 @@
+import { SignupClient } from '@/components/signup-client';
+import { useLoaderData } from 'react-router';
+import type { Route } from './+types/page';
+
+export async function clientLoader() {
+  const isProd = !import.meta.env.DEV;
+
+  const response = await fetch(import.meta.env.VITE_PUBLIC_BACKEND_URL + '/api/public/providers');
+  const data = (await response.json()) as { allProviders: any[] };
+
+  return {
+    allProviders: data.allProviders,
+    isProd,
+  };
+}
+
+export default function SignupPage() {
+  const { allProviders, isProd } = useLoaderData<typeof clientLoader>();
+
+  return (
+    <div className="grid h-screen w-screen bg-black lg:grid-cols-2 fixed inset-0">
+      <SignupClient providers={allProviders} isProd={isProd} />
+    </div>
+  );
+} 
