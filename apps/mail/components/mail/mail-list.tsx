@@ -243,7 +243,7 @@ const Thread = memo(
               'relative',
               'group',
 
-              (otpCode || magicLink) && 'pb-0 outline-2 outline-[#313131]',
+              (otpCode || magicLink) && 'outline-border pb-0 outline-2 dark:outline-[#313131]',
             )}
           >
             <div
@@ -533,7 +533,7 @@ const Thread = memo(
             {otpCode && (
               <div
                 className={cn(
-                  'flex w-full items-center justify-between gap-2 bg-[#313131] p-2',
+                  'bg-border flex w-full items-center justify-between gap-2 p-2 dark:bg-[#313131]',
                   !magicLink && 'rounded-b-lg',
                 )}
               >
@@ -578,7 +578,7 @@ const Thread = memo(
               </div>
             )}
             {magicLink && (
-              <div className="flex w-full items-center justify-between gap-2 rounded-b-lg bg-[#313131] p-2">
+              <div className="bg-border flex w-full items-center justify-between gap-2 rounded-b-lg p-2 dark:bg-[#313131]">
                 <span className="text-muted-foreground text-xs">Magic Sign-in Link</span>
                 <Button
                   variant="secondary"
