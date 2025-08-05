@@ -21,7 +21,7 @@ import { useThread, useThreads } from '@/hooks/use-threads';
 import { useSearchValue } from '@/hooks/use-search-value';
 import { EmptyStateIcon } from '../icons/empty-state-svg';
 import { highlightText } from '@/lib/email-utils.client';
-import { OTPCodesDisplay } from './otp-codes-display';
+import { detectOTPFromEmail } from '@/lib/otp-detection';
 import { cn, FOLDERS, formatDate } from '@/lib/utils';
 import { useTRPC } from '@/providers/query-provider';
 import { useThreadLabels } from '@/hooks/use-labels';
@@ -56,14 +56,16 @@ const Thread = memo(
     const [id, setThreadId] = useQueryState('threadId');
     const [focusedIndex, setFocusedIndex] = useAtom(focusedIndexAtom);
 
-    const { latestMessage, idToUse, cleanName } = useMemo(() => {
+    const { latestMessage, idToUse, cleanName, otpCode } = useMemo(() => {
       const latestMessage = getThreadData?.latest;
       const idToUse = latestMessage?.threadId ?? latestMessage?.id;
       const cleanName = latestMessage?.sender?.name
         ? latestMessage.sender.name.trim().replace(/^['"]|['"]$/g, '')
         : '';
 
-      return { latestMessage, idToUse, cleanName };
+      const otpCode = latestMessage ? detectOTPFromEmail(latestMessage) : null;
+
+      return { latestMessage, idToUse, cleanName, otpCode };
     }, [getThreadData?.latest]);
 
     const optimisticState = useOptimisticThreadState(idToUse ?? '');
@@ -476,13 +478,28 @@ const Thread = memo(
                         {latestMessage.to.map((e) => e.email).join(', ')}
                       </p>
                     ) : (
-                      <p
-                        className={cn(
-                          'mt-1 line-clamp-1 w-[95%] min-w-0 overflow-hidden text-sm text-[#8C8C8C]',
+                      <div className="flex-1">
+                        <p
+                          className={cn(
+                            'mt-1 line-clamp-1 w-[95%] min-w-0 overflow-hidden text-sm text-[#8C8C8C]',
+                          )}
+                        >
+                          {highlightText(latestMessage.subject, searchValue.highlight)}
+                        </p>
+                        {otpCode && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <Badge
+                              variant="secondary"
+                              className="bg-black/10 font-mono text-xs dark:bg-white/10"
+                            >
+                              {otpCode.code}
+                            </Badge>
+                            <span className="text-muted-foreground text-xs">
+                              {otpCode.service} verification code
+                            </span>
+                          </div>
                         )}
-                      >
-                        {highlightText(latestMessage.subject, searchValue.highlight)}
-                      </p>
+                      </div>
                     )}
                     {/* <div className="hidden md:flex">
                       {getThreadData.labels ? <MailLabels labels={getThreadData.labels} /> : null}
@@ -930,11 +947,6 @@ export const MailList = memo(
               </div>
             ) : (
               <div className="flex flex-1 flex-col" id="mail-list-scroll">
-                {folder === 'inbox' && (
-                  <div>
-                    <OTPCodesDisplay />
-                  </div>
-                )}
                 <VList
                   ref={vListRef}
                   count={filteredItems.length}
