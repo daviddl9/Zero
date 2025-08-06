@@ -906,26 +906,6 @@ function EmailComposerBase({
       <div className="inline-flex w-full shrink-0 items-end justify-between self-stretch rounded-b-2xl bg-[#FFFFFF] px-3.5 py-2.5 outline-white/5 dark:bg-[#313131]">
         <div className="flex flex-col items-start justify-start gap-2">
           <div className="flex items-center justify-start gap-2">
-            <Button
-              size={'xs'}
-              onClick={handleSend}
-              disabled={isLoading || settingsLoading || !isScheduleValid}
-            >
-              <div className="flex items-center justify-center">
-                <div className="text-center text-sm leading-none text-white dark:text-black">
-                  <span>Send </span>
-                </div>
-              </div>
-              <div className="flex h-5 items-center justify-center gap-1 rounded-sm bg-white/10 px-1 dark:bg-black/10">
-                <Command className="h-3.5 w-3.5 text-white dark:text-black" />
-                <CurvedArrow className="mt-1.5 h-4 w-4 fill-white dark:fill-black" />
-              </div>
-            </Button>
-            <ScheduleSendPicker
-              value={scheduleAt}
-              onChange={handleScheduleChange}
-              onValidityChange={handleScheduleValidityChange}
-            />
             <div className="relative">
               <AnimatePresence>
                 {aiGeneratedMessage !== null ? (
@@ -949,32 +929,6 @@ function EmailComposerBase({
                   />
                 ) : null}
               </AnimatePresence>
-              <Button
-                size={'xs'}
-                variant={'ghost'}
-                className="border border-[#8B5CF6]"
-                onClick={async () => {
-                  if (!subjectInput.trim()) {
-                    await handleGenerateSubject();
-                  }
-                  setAiGeneratedMessage(null);
-                  await handleAiGenerate();
-                }}
-                disabled={isLoading || aiIsLoading || messageLength < 1}
-              >
-                <div className="flex items-center justify-center gap-2.5 pl-0.5">
-                  <div className="flex h-5 items-center justify-center gap-1 rounded-sm">
-                    {aiIsLoading ? (
-                      <Loader className="h-3.5 w-3.5 animate-spin fill-black dark:fill-white" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5 fill-black dark:fill-white" />
-                    )}
-                  </div>
-                  <div className="hidden text-center text-sm leading-none text-black md:block dark:text-white">
-                    Generate
-                  </div>
-                </div>
-              </Button>
             </div>
             <Button
               variant={'ghost'}
@@ -1128,14 +1082,22 @@ function EmailComposerBase({
           </div>
         </div>
         <div className="flex items-start justify-start gap-2">
-          <Button size={'xs'} onClick={handleSend} disabled={isLoading || settingsLoading}>
+          <ScheduleSendPicker
+            value={scheduleAt}
+            onChange={handleScheduleChange}
+            onValidityChange={handleScheduleValidityChange}
+          />
+          <Button
+            size={'xs'}
+            onClick={handleSend}
+            disabled={isLoading || settingsLoading || !isScheduleValid}
+          >
             <div className="flex items-center justify-center">
               <div className="text-center text-sm leading-none text-white dark:text-black">
                 <span>Send </span>
               </div>
             </div>
-          </Button>
-          <Button variant={'secondary'} size={'xs'}>
+
             <div className="flex h-5 items-center justify-center gap-1 rounded-sm bg-white/10 px-1 dark:bg-black/10">
               <Command className="h-3.5 w-3.5 text-white dark:text-black" />
               <CurvedArrow className="mt-1.5 h-4 w-4 fill-white dark:fill-black" />

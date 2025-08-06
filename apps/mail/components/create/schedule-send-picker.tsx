@@ -1,7 +1,8 @@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Clock } from 'lucide-react';
-import { format, isValid } from 'date-fns';
 import { useState, useEffect } from 'react';
+import { format, isValid } from 'date-fns';
+import { Button } from '../ui/button';
+import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -79,14 +80,15 @@ export const ScheduleSendPicker: React.FC<ScheduleSendPickerProps> = ({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
+          size={'xs'}
           className={cn(
-            'flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-accent',
+            'hover:bg-accent flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-sm text-black dark:bg-black/10 dark:text-white',
             className,
           )}
         >
-          <Clock className="h-4 w-4" />
+          {/* <Clock className="h-4 w-4" /> */}
           <span>
             {(() => {
               if (!localValue) return 'Send later';
@@ -100,7 +102,7 @@ export const ScheduleSendPicker: React.FC<ScheduleSendPickerProps> = ({
               }
             })()}
           </span>
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="z-[100] w-64 p-4" align="start" side="top" sideOffset={8}>
         <div className="flex flex-col gap-4">
@@ -109,7 +111,7 @@ export const ScheduleSendPicker: React.FC<ScheduleSendPickerProps> = ({
             type="datetime-local"
             value={displayValue}
             onChange={handleChange}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:opacity-0"
+            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:opacity-0"
           />
         </div>
       </PopoverContent>
