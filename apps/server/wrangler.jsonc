@@ -152,10 +152,6 @@
           "id": "c55e692bb71d4e5bae23dded092b09d5",
         },
         {
-          "binding": "CONTACTS_KV",
-          "id": "00000000000000000000000000000001",
-        },
-        {
           "binding": "snoozed_emails",
           "id": "f3a30ed7198542d890db172536bade33",
         },
@@ -308,10 +304,6 @@
           "id": "c55e692bb71d4e5bae23dded092b09d5",
         },
         {
-          "binding": "CONTACTS_KV",
-          "id": "00000000000000000000000000000002",
-        },
-        {
           "binding": "snoozed_emails",
           "id": "f3a30ed7198542d890db172536bade33",
         },
@@ -460,10 +452,7 @@
           "binding": "gmail_sub_age",
           "id": "0591e91fffcc4675aaf00f909bee77d2",
         },
-        {
-          "binding": "CONTACTS_KV",
-          "id": "00000000000000000000000000000003",
-        },
+
         {
           "binding": "snoozed_emails",
           "id": "f0952e9c3b024cb499c4b9dfe8bb603e",

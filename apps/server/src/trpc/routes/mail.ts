@@ -14,8 +14,6 @@ import { getZeroAgent } from '../../lib/server-utils';
 import { env } from 'cloudflare:workers';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { upsertContacts, suggestContacts } from '../../lib/contacts-cache';
-import { scheduleContactsIndexing } from '../../lib/contacts-indexer';
 
 const senderSchema = z.object({
   name: z.string().optional(),
@@ -46,28 +44,7 @@ export const mailRouter = router({
       const { activeConnection } = ctx;
       const agent = await getZeroAgent(activeConnection.id);
 
-      const kvSuggestions = await suggestContacts(
-        activeConnection.id,
-        input.query,
-        input.limit,
-      );
-
-      const senderSuggestions = await agent.suggestRecipients(input.query, input.limit);
-
-      const map = new Map<string, { email: string; name?: string | null; displayText: string }>();
-      [...kvSuggestions, ...senderSuggestions].forEach((s) => {
-        if (!map.has(s.email.toLowerCase())) {
-          map.set(s.email.toLowerCase(), s);
-        }
-      });
-
-      const merged = Array.from(map.values());
-
-      if (merged.length === 0) {
-        ctx.c.executionCtx.waitUntil(scheduleContactsIndexing(activeConnection.id));
-      }
-
-      return merged.slice(0, input.limit);
+      return await agent.suggestRecipients(input.query, input.limit);
     }),
   get: activeDriverProcedure
     .input(
@@ -441,11 +418,6 @@ export const mailRouter = router({
       } else {
         await agent.create(input);
       }
-
-      const contactsToAdd = [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])].map(
-        (rec) => ({ email: rec.email, name: rec.name }),
-      );      
-      ctx.c.executionCtx.waitUntil(upsertContacts(activeConnection.id, contactsToAdd));
 
       ctx.c.executionCtx.waitUntil(afterTask());
       return { success: true };

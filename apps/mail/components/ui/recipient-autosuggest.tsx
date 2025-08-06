@@ -54,16 +54,18 @@ export function RecipientAutosuggest({
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const trpc = useTRPC();
-  const { data: suggestions = [], isLoading } = useQuery({
+  const { data: allSuggestions = [], isLoading } = useQuery({
     ...trpc.mail.suggestRecipients.queryOptions({
       query: debouncedQuery,
       limit: 10,
     }),
     enabled: debouncedQuery.trim().length > 0 && !isComposing,
-    select: (data: RecipientSuggestion[]) => data.filter((suggestion: RecipientSuggestion) => !recipients.includes(suggestion.email)),
   });
 
-  const filteredSuggestions = useMemo(() => suggestions || [], [suggestions]);
+  const filteredSuggestions = useMemo(() => 
+    (allSuggestions as RecipientSuggestion[]).filter((suggestion: RecipientSuggestion) => 
+      !recipients.includes(suggestion.email)
+    ), [allSuggestions, recipients]);
 
   const isValidEmail = useCallback((email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
