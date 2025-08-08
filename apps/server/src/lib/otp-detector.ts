@@ -117,6 +117,8 @@ Output: {"code": "A9B2K7", "service": "Apple"}`;
 
   const userPrompt = `Subject: ${subject}\nFrom: ${fromName} <${fromEmail}>\n\nTitle: ${title}\n\nBody:\n${sanitize}`;
 
+  console.log('[OTP_DETECTOR_AI] [userPrompt]', userPrompt);
+
   try {
     const { object: raw } = await generateObject({
       model: openai(env.OPENAI_MODEL || 'gpt-4o'),
