@@ -1,4 +1,3 @@
-import { useCopiedOtpCodes } from '@/hooks/use-copied-otp-codes';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useCopyToClipboard } from './use-copy-to-clipboard';
 import { useTRPC } from '@/providers/query-provider';
@@ -22,7 +21,6 @@ export interface OTPEmail {
 
 export function useOTPEmails(connectionId: string) {
   const trpc = useTRPC();
-  const { markAsCopied, isCodeCopied } = useCopiedOtpCodes();
   const { copyToClipboard } = useCopyToClipboard();
   const [copiedCodes, setCopiedCodes] = useState<Set<string>>(new Set());
 
@@ -77,7 +75,6 @@ export function useOTPEmails(connectionId: string) {
   const handleCopyCode = useCallback(
     async (otp: OTPEmail) => {
       await copyToClipboard(otp?.code || '', otp.id);
-      markAsCopied(otp.id);
       setCopiedCodes((prev) => new Set([...prev, otp.id]));
 
       if (!otp.isCopied) {
@@ -88,7 +85,7 @@ export function useOTPEmails(connectionId: string) {
         description: `${otp.service} code copied to clipboard`,
       });
     },
-    [copyToClipboard, markAsCopied, markAsCopiedMutation],
+    [copyToClipboard, markAsCopiedMutation],
   );
 
   const handleDeleteOTP = useCallback(
@@ -127,7 +124,7 @@ export function useOTPEmails(connectionId: string) {
     handleDeleteOTP,
     handleClearExpired,
     hasExpiredOTPs,
-    isCodeCopied: (otpId: string) => copiedCodes.has(otpId) || isCodeCopied(otpId),
+    isCodeCopied: (otpId: string) => copiedCodes.has(otpId),
     isDeletingOTP: deleteMutation.isPending,
     isClearingExpired: deleteExpiredMutation.isPending,
   };
