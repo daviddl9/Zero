@@ -149,9 +149,6 @@
       "observability": {
         "enabled": true,
       },
-      "triggers": {
-        "crons": ["*/1 * * * *", "0 0 * * *", "0 * * * *"],
-      },
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
@@ -177,6 +174,7 @@
         "USE_OPENAI": "true",
         "CLOUDFLARE_ACCOUNT_ID": "",
         "CLOUDFLARE_API_TOKEN": "",
+        "MEET_AUTH_HEADER": "",
       },
       "kv_namespaces": [
         {
@@ -390,7 +388,7 @@
         "DROP_AGENT_TABLES": "false",
         "THREAD_SYNC_MAX_COUNT": "60",
         "THREAD_SYNC_LOOP": "true",
-        "DISABLE_WORKFLOWS": "true",
+        "DISABLE_WORKFLOWS": "false",
       },
       "kv_namespaces": [
         {

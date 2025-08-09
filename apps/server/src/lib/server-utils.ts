@@ -2,6 +2,7 @@ import type { IGetThreadResponse, IGetThreadsResponse } from './driver/types';
 import { OutgoingMessageType } from '../routes/agent/types';
 import { getContext } from 'hono/context-storage';
 import { connection } from '../db/schema';
+import { defaultPageSize } from './utils';
 import type { HonoContext } from '../ctx';
 import { createClient } from 'dormroom';
 import { createDriver } from './driver';
@@ -350,24 +351,40 @@ export const getZeroAgent = async (connectionId: string, executionCtx?: Executio
   return agent;
 };
 
+export const getZeroAgentFromShard = async (connectionId: string, shardId: string) => {
+  const agent = await getShardClient(connectionId, shardId);
+  return agent;
+};
+
 export const forceReSync = async (connectionId: string) => {
   const registry = await getRegistryClient(connectionId);
   const allShards = await listShards(registry);
-  for (const { shard_id: id } of allShards) {
-    const shard = await getShardClient(connectionId, id);
-    await shard.exec(`DROP TABLE IF EXISTS threads`);
-    await shard.exec(`DROP TABLE IF EXISTS thread_labels`);
-    await shard.exec(`DROP TABLE IF EXISTS labels`);
-  }
+
+  await Promise.allSettled(
+    allShards.map(async ({ shard_id: id }) => {
+      const shard = await getShardClient(connectionId, id);
+      await Promise.allSettled([
+        shard.exec(`DROP TABLE IF EXISTS threads`),
+        shard.exec(`DROP TABLE IF EXISTS thread_labels`),
+        shard.exec(`DROP TABLE IF EXISTS labels`),
+      ]);
+    }),
+  );
+
   await deleteAllShards(registry);
+
   const agent = await getZeroAgent(connectionId);
-  await agent.stub.forceReSync();
+  return agent.stub.forceReSync();
 };
 
-type GetThreadsAccumulator = {
-  threads: any[];
-  nextPageToken: string | null;
-  maxResults: number;
+export const reSyncThread = async (connectionId: string, threadId: string) => {
+  try {
+    const { shardId } = await getThread(connectionId, threadId);
+    const agent = await getZeroAgentFromShard(connectionId, shardId);
+    await agent.stub.syncThread({ threadId });
+  } catch (error) {
+    console.error(`[ZeroAgent] Thread not found for threadId: ${threadId}`, error);
+  }
 };
 
 export const getThreadsFromDB = async (
@@ -380,80 +397,50 @@ export const getThreadsFromDB = async (
     pageToken?: string;
   },
 ): Promise<IGetThreadsResponse> => {
-  console.log(`[getThreadsFromDB] Called with connectionId: ${connectionId}, params:`, params);
-  await sendDoState(connectionId);
+  // Fire and forget - don't block the thread query on state updates
+  void sendDoState(connectionId);
 
-  const maxResults = params.maxResults ?? 20;
+  const maxResults = params.maxResults ?? defaultPageSize;
+
+  if (maxResults === defaultPageSize && !params.pageToken && !params.q) {
+    return Effect.promise(async () => {
+      const agent = await getZeroAgent(connectionId);
+      return await agent.stub.getThreadsFromDB({
+        ...params,
+        maxResults: maxResults,
+      });
+    }).pipe(Effect.runPromise);
+  }
 
   return Effect.runPromise(
-    aggregateShardDataSequentialEffect<IGetThreadsResponse, GetThreadsAccumulator>(
+    aggregateShardDataEffect<IGetThreadsResponse>(
       connectionId,
-      (shard, shardId, accumulator) =>
-        Effect.gen(function* () {
-          if (accumulator.threads.length >= accumulator.maxResults) {
-            console.log(
-              `[getThreadsFromDB] Reached maxResults (${accumulator.maxResults}), breaking loop`,
-            );
-            return { shouldContinue: false, accumulator };
-          }
+      (shard) =>
+        Effect.promise(() =>
+          shard.stub.getThreadsFromDB({
+            ...params,
+            maxResults: maxResults,
+          }),
+        ),
+      (shardResults) => {
+        // Combine all threads from all shards
+        const allThreads = shardResults.flatMap((result) => result.threads);
 
-          const remainingResults = accumulator.maxResults - accumulator.threads.length;
-          console.log(
-            `[getThreadsFromDB] Querying shard ${shardId} for up to ${remainingResults} threads`,
-          );
+        // Sort by some criteria if needed (assuming threads have a sortable field)
+        // allThreads.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
-          const shardResult = (yield* Effect.promise(() =>
-            shard.stub.getThreadsFromDB({
-              ...params,
-              maxResults: remainingResults,
-            }),
-          )) as IGetThreadsResponse;
+        // Take only the requested amount
+        const threads = allThreads.slice(0, maxResults);
 
-          console.log(
-            `[getThreadsFromDB] Shard ${shardId} returned ${shardResult.threads.length} threads, nextPageToken: ${shardResult.nextPageToken}`,
-          );
+        // Determine if there's a next page token (simplified logic)
+        const hasMoreResults = allThreads.length > maxResults;
+        const nextPageToken = hasMoreResults
+          ? shardResults.find((r) => r.nextPageToken)?.nextPageToken || null
+          : null;
 
-          const newThreads = [...accumulator.threads, ...shardResult.threads];
-          let newNextPageToken = accumulator.nextPageToken;
-
-          if (shardResult.nextPageToken) {
-            newNextPageToken = shardResult.nextPageToken;
-            console.log(
-              `[getThreadsFromDB] Setting nextPageToken from shard ${shardId}: ${newNextPageToken}`,
-            );
-          }
-
-          const shouldContinue =
-            newThreads.length < accumulator.maxResults &&
-            shardResult.threads.length >= remainingResults;
-
-          if (!shouldContinue) {
-            console.log(
-              `[getThreadsFromDB] Stopping after shard ${shardId} (threads.length: ${newThreads.length}, shardResult.threads.length: ${shardResult.threads.length}, remainingResults: ${remainingResults})`,
-            );
-          }
-
-          return {
-            shouldContinue,
-            accumulator: {
-              threads: newThreads,
-              nextPageToken: newNextPageToken,
-              maxResults: accumulator.maxResults,
-            },
-          };
-        }),
-      { threads: [], nextPageToken: null, maxResults },
-      (accumulator) => {
-        const slicedThreads = accumulator.threads.slice(
-          0,
-          maxResults === Infinity ? accumulator.threads.length : maxResults,
-        );
-        console.log(
-          `[getThreadsFromDB] Returning ${slicedThreads.length} threads, nextPageToken: ${accumulator.nextPageToken}`,
-        );
         return {
-          threads: slicedThreads,
-          nextPageToken: accumulator.nextPageToken,
+          threads,
+          nextPageToken,
         };
       },
     ),
@@ -507,17 +494,19 @@ const getCounts = async (connectionId: string): Promise<CountResult[]> => {
  */
 export const sendDoState = async (connectionId: string) => {
   try {
-    const registry = await getRegistryClient(connectionId);
-    const agent = await getZeroSocketAgent(connectionId);
-    const size = await getDatabaseSize(connectionId);
-    const counts = await getCounts(connectionId);
+    const [registry, agent, size, counts] = await Promise.all([
+      getRegistryClient(connectionId),
+      getZeroSocketAgent(connectionId),
+      getDatabaseSize(connectionId),
+      getCounts(connectionId),
+    ]);
     const shards = await listShards(registry);
-    return await agent.broadcastChatMessage({
+    return agent.broadcastChatMessage({
       type: OutgoingMessageType.Do_State,
       isSyncing: false,
       syncingFolders: ['inbox'],
       storageSize: size,
-      counts: counts,
+      counts,
       shards: shards.length,
     });
   } catch (error) {
@@ -532,11 +521,10 @@ export const getZeroSocketAgent = async (connectionId: string) => {
 
 export const getActiveConnection = async () => {
   const c = getContext<HonoContext>();
-  const { sessionUser } = c.var;
+  const { sessionUser, auth } = c.var;
   if (!sessionUser) throw new Error('Session Not Found');
 
   const db = await getZeroDB(sessionUser.id);
-
   const userData = await db.findUser();
 
   if (userData?.defaultConnectionId) {
@@ -546,6 +534,14 @@ export const getActiveConnection = async () => {
 
   const firstConnection = await db.findFirstConnection();
   if (!firstConnection) {
+    try {
+      if (auth) {
+        await auth.api.revokeSession({ headers: c.req.raw.headers });
+        await auth.api.signOut({ headers: c.req.raw.headers });
+      }
+    } catch (err) {
+      console.warn(`[getActiveConnection] Session cleanup failed for user ${sessionUser.id}:`, err);
+    }
     console.error(`No connections found for user ${sessionUser.id}`);
     throw new Error('No connections found for user');
   }
