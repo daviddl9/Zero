@@ -1,0 +1,53 @@
+{
+  "name": "zero-api",
+  "main": "src/main.ts",
+  "compatibility_date": "2024-12-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "send_metrics": false,
+  "observability": {
+    "enabled": true
+  },
+  "services": [
+    {
+      "binding": "WORKER_SERVICE",
+      "service": "zero-worker"
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "01234567-89ab-cdef-0123-456789abcdef"
+    }
+  ],
+  "vars": {
+    "NODE_ENV": "development",
+    "JWT_SECRET": "secret",
+    "BASE_URL": "http://localhost:8788",
+    "VITE_PUBLIC_APP_URL": "http://localhost:5173",
+    "DATABASE_URL": "",
+    "BETTER_AUTH_SECRET": "",
+    "BETTER_AUTH_URL": "",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": "",
+    "RESEND_API_KEY": "",
+    "VITE_PUBLIC_POSTHOG_KEY": "",
+    "VITE_PUBLIC_POSTHOG_HOST": "",
+    "COOKIE_DOMAIN": "",
+    "BETTER_AUTH_TRUSTED_ORIGINS": "",
+    "GITHUB_CLIENT_ID": "",
+    "GITHUB_CLIENT_SECRET": "",
+    "GOOGLE_REDIRECT_URI": "",
+    "GOOGLE_APPLICATION_CREDENTIALS": "",
+    "ZERO_CLIENT_ID": "",
+    "ZERO_CLIENT_SECRET": "",
+    "VITE_PUBLIC_BACKEND_URL": "",
+    "REDIS_URL": "",
+    "REDIS_TOKEN": "",
+    "MICROSOFT_CLIENT_ID": "",
+    "MICROSOFT_CLIENT_SECRET": "",
+    "VOICE_SECRET": "",
+    "MEET_AUTH_HEADER": "",
+    "MEET_API_URL": "",
+    "ENABLE_MEET": "false"
+  }
+}

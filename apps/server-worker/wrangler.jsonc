@@ -1,0 +1,241 @@
+{
+  "name": "zero-worker",
+  "main": "src/main.ts",
+  "compatibility_date": "2024-12-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "send_metrics": false,
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ZERO_DRIVER",
+        "class_name": "ZeroDriver",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "SHARD_REGISTRY",
+        "class_name": "ShardRegistry",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "ZERO_DB",
+        "class_name": "ZeroDB",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "ZERO_AGENT",
+        "class_name": "ZeroAgent",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "ZERO_MCP",
+        "class_name": "ZeroMCP",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "THINKING_MCP",
+        "class_name": "ThinkingMCP",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "WORKFLOW_RUNNER",
+        "class_name": "WorkflowRunner",
+        "script_name": "zero-worker"
+      },
+      {
+        "name": "THREAD_SYNC_WORKER",
+        "class_name": "ThreadSyncWorker",
+        "script_name": "zero-worker"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "name": "SYNC_THREADS_WORKFLOW",
+      "binding": "SYNC_THREADS_WORKFLOW",
+      "class_name": "SyncThreadsWorkflow",
+      "script_name": "zero-worker"
+    },
+    {
+      "name": "SYNC_THREADS_COORDINATOR_WORKFLOW",
+      "binding": "SYNC_THREADS_COORDINATOR_WORKFLOW", 
+      "class_name": "SyncThreadsCoordinatorWorkflow",
+      "script_name": "zero-worker"
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "01234567-89ab-cdef-0123-456789abcdef"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "pending_emails_status",
+      "id": "pending_emails_status_id"
+    },
+    {
+      "binding": "pending_emails_payload",
+      "id": "pending_emails_payload_id"
+    },
+    {
+      "binding": "scheduled_emails",
+      "id": "scheduled_emails_id"
+    },
+    {
+      "binding": "snoozed_emails",
+      "id": "snoozed_emails_id"
+    },
+    {
+      "binding": "gmail_sub_age",
+      "id": "gmail_sub_age_id"
+    },
+    {
+      "binding": "gmail_history_id",
+      "id": "gmail_history_id_id"
+    },
+    {
+      "binding": "gmail_processing_threads",
+      "id": "gmail_processing_threads_id"
+    },
+    {
+      "binding": "subscribed_accounts",
+      "id": "subscribed_accounts_id"
+    },
+    {
+      "binding": "connection_labels",
+      "id": "connection_labels_id"
+    },
+    {
+      "binding": "prompts_storage",
+      "id": "prompts_storage_id"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "send_email_queue",
+        "queue": "send-email-queue"
+      },
+      {
+        "binding": "subscribe_queue",
+        "queue": "subscribe-queue"
+      },
+      {
+        "binding": "thread_queue",
+        "queue": "thread-queue"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "send-email-queue",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "send-email-dlq"
+      },
+      {
+        "queue": "subscribe-queue",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "subscribe-dlq"
+      },
+      {
+        "queue": "thread-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "thread-dlq"
+      }
+    ]
+  },
+  "r2_buckets": [
+    {
+      "binding": "THREADS_BUCKET",
+      "bucket_name": "threads-bucket"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "vectorize-index"
+    },
+    {
+      "binding": "VECTORIZE_MESSAGE",
+      "index_name": "vectorize-message-index"
+    }
+  ],
+  "vars": {
+    "NODE_ENV": "development",
+    "JWT_SECRET": "secret",
+    "ELEVENLABS_API_KEY": "1234567890",
+    "DISABLE_CALLS": "",
+    "DROP_AGENT_TABLES": "false",
+    "THREAD_SYNC_MAX_COUNT": "5",
+    "THREAD_SYNC_LOOP": "false",
+    "DISABLE_WORKFLOWS": "true",
+    "AUTORAG_ID": "",
+    "USE_OPENAI": "true",
+    "CLOUDFLARE_ACCOUNT_ID": "",
+    "CLOUDFLARE_API_TOKEN": "",
+    "BASE_URL": "http://localhost:8787",
+    "VITE_PUBLIC_APP_URL": "http://localhost:5173",
+    "DATABASE_URL": "",
+    "BETTER_AUTH_SECRET": "",
+    "BETTER_AUTH_URL": "",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": "",
+    "RESEND_API_KEY": "",
+    "VITE_PUBLIC_POSTHOG_KEY": "",
+    "VITE_PUBLIC_POSTHOG_HOST": "",
+    "COOKIE_DOMAIN": "",
+    "BETTER_AUTH_TRUSTED_ORIGINS": "",
+    "GITHUB_CLIENT_ID": "",
+    "GITHUB_CLIENT_SECRET": "",
+    "GOOGLE_REDIRECT_URI": "",
+    "GOOGLE_APPLICATION_CREDENTIALS": "",
+    "HISTORY_OFFSET": "",
+    "ZERO_CLIENT_ID": "",
+    "ZERO_CLIENT_SECRET": "",
+    "VITE_PUBLIC_BACKEND_URL": "",
+    "REDIS_URL": "",
+    "REDIS_TOKEN": "",
+    "OPENAI_API_KEY": "",
+    "BRAIN_URL": "",
+    "COMPOSIO_API_KEY": "",
+    "GROQ_API_KEY": "",
+    "EARLY_ACCESS_ENABLED": "",
+    "GOOGLE_GENERATIVE_AI_API_KEY": "",
+    "AUTUMN_SECRET_KEY": "",
+    "AI_SYSTEM_PROMPT": "",
+    "PERPLEXITY_API_KEY": "",
+    "TWILIO_ACCOUNT_SID": "",
+    "TWILIO_AUTH_TOKEN": "",
+    "TWILIO_PHONE_NUMBER": "",
+    "VITE_PUBLIC_ELEVENLABS_AGENT_ID": "",
+    "REACT_SCAN": "",
+    "MICROSOFT_CLIENT_ID": "",
+    "MICROSOFT_CLIENT_SECRET": "",
+    "VOICE_SECRET": "",
+    "ARCADE_API_KEY": "",
+    "OPENAI_MODEL": "",
+    "OPENAI_MINI_MODEL": "",
+    "ANTHROPIC_API_KEY": "",
+    "GOOGLE_S_ACCOUNT": "",
+    "AXIOM_API_TOKEN": "",
+    "AXIOM_DATASET": "",
+    "DEV_PROXY": "",
+    "MEET_AUTH_HEADER": "",
+    "MEET_API_URL": "",
+    "ENABLE_MEET": "false",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "",
+    "OTEL_EXPORTER_OTLP_HEADERS": "",
+    "OTEL_SERVICE_NAME": ""
+  }
+}
