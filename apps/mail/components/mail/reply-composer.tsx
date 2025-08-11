@@ -1,4 +1,4 @@
-import { useUndoSend, deserializeFiles, type EmailData } from '@/hooks/use-undo-send';
+import { useUndoSend, deserializeFiles, type EmailData, type ReplyMode, type UndoContext } from '@/hooks/use-undo-send';
 import { constructReplyBody, constructForwardBody } from '@/lib/utils';
 import { useActiveConnection } from '@/hooks/use-connections';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
@@ -119,28 +119,39 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
     }
 
     if (mode === 'replyAll') {
+      const seen = new Set<string>();
+
+      const pushIfNew = (email: string, target: 'to' | 'cc') => {
+        const key = email.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        if (target === 'to') {
+          result.defaultTo.push(email);
+        } else {
+          result.defaultCc.push(email);
+        }
+      };
+
       // Add original sender if not current user
       if (senderEmail !== userEmail) {
-        result.defaultTo.push(replyToMessage.sender.email);
+        pushIfNew(replyToMessage.sender.email, 'to');
       }
 
       // Add original recipients from To field
       replyToMessage.to?.forEach((recipient) => {
-        const recipientEmail = recipient.email.toLowerCase();
-        if (recipientEmail !== userEmail && recipientEmail !== senderEmail) {
-          if (!result.defaultTo.includes(recipient.email)) {
-            result.defaultTo.push(recipient.email);
-          }
+        const recipientEmail = recipient.email;
+        const key = recipientEmail.toLowerCase();
+        if (key !== userEmail && key !== senderEmail) {
+          pushIfNew(recipientEmail, 'to');
         }
       });
 
       // Add CC recipients
       replyToMessage.cc?.forEach((recipient) => {
-        const recipientEmail = recipient.email.toLowerCase();
-        if (recipientEmail !== userEmail && !result.defaultTo.includes(recipient.email)) {
-          if (!result.defaultCc.includes(recipient.email)) {
-            result.defaultCc.push(recipient.email);
-          }
+        const recipientEmail = recipient.email;
+        const key = recipientEmail.toLowerCase();
+        if (key !== userEmail) {
+          pushIfNew(recipientEmail, 'cc');
         }
       });
 
@@ -274,10 +285,10 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
       }, {
         kind: 'reply',
         threadId: replyToMessage.threadId || threadId || '',
-        mode: (mode as 'reply' | 'replyAll' | 'forward') ?? 'reply',
+        mode: (mode ?? 'reply') as ReplyMode,
         activeReplyId: replyToMessage.id,
-        draftId: draftId ?? undefined,
-      });
+        draftId,
+      } satisfies UndoContext);
     } catch (error) {
       console.error('Error sending email:', error);
       toast.error(m['pages.createEmail.failedToSendEmail']());
@@ -315,7 +326,7 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
   return (
     <div className="w-full rounded-2xl overflow-visible border">
       <EmailComposer
-        key={draftId || undoReplyEmailData?.to?.join(',') || 'reply-composer'}
+        key={draftId || replyToMessage?.id || 'reply-composer'}
         editorClassName="min-h-[50px]"
         className="w-full max-w-none! pb-1 overflow-visible"
         onSendEmail={handleSendEmail}

@@ -28,9 +28,9 @@ type SerializableEmailData = Omit<EmailData, 'attachments'> & {
   attachments: SerializedFile[];
 };
 
-type ReplyMode = 'reply' | 'replyAll' | 'forward';
+export type ReplyMode = 'reply' | 'replyAll' | 'forward';
 
-type UndoContext =
+export type UndoContext =
   | { kind: 'compose' }
   | {
       kind: 'reply';
