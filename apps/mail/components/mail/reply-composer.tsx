@@ -14,7 +14,7 @@ import { useDraft } from '@/hooks/use-drafts';
 import { m } from '@/paraglide/messages';
 import type { Sender } from '@/types';
 import { useQueryState } from 'nuqs';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import posthog from 'posthog-js';
 import { toast } from 'sonner';
 
@@ -43,15 +43,34 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
   const replyToMessage =
     (messageId && emailData?.messages.find((msg) => msg.id === messageId)) || emailData?.latest;
 
+  const undoReplyRaw = useSyncExternalStore(
+    (listener) => {
+      if (typeof window === 'undefined') return () => {};
+      const handler = () => listener();
+      window.addEventListener('storage', handler);
+      window.addEventListener('zero:undoReplyEmailData', handler as EventListener);
+      return () => {
+        window.removeEventListener('storage', handler);
+        window.removeEventListener('zero:undoReplyEmailData', handler as EventListener);
+      };
+    },
+    () => {
+      try {
+        return typeof window !== 'undefined'
+          ? window.localStorage.getItem('undoReplyEmailData')
+          : null;
+      } catch {
+        return null;
+      }
+    },
+    () => null,
+  );
+
   const undoReplyEmailData = useMemo((): EmailData | null => {
     if (!mode) return null;
-    if (typeof window === 'undefined') return null;
-
-    const stored = localStorage.getItem('undoReplyEmailData');
-    if (!stored) return null;
-
+    if (!undoReplyRaw) return null;
     try {
-      const parsed = JSON.parse(stored);
+      const parsed = JSON.parse(undoReplyRaw);
       const ctx = parsed?.__replyContext as
         | { threadId: string; activeReplyId: string; mode: string; draftId?: string | null }
         | undefined;
@@ -69,7 +88,7 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
       console.error('Failed to parse undo reply email data:', err);
       return null;
     }
-  }, [mode, threadId, messageId, activeReplyId, replyToMessage?.id, replyToMessage?.threadId]);
+  }, [undoReplyRaw, mode, threadId, messageId, activeReplyId, replyToMessage?.id, replyToMessage?.threadId]);
 
   const { defaultTo, defaultCc, defaultSubject } = useMemo(() => {
     const result = { defaultTo: [] as string[], defaultCc: [] as string[], defaultSubject: '' };
