@@ -703,13 +703,31 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     if (this.name === 'general') return;
     if (!this.driver) {
       const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
+
+      console.log(`[setupAuth] Looking for connection: ${this.name}`);
+      console.log(
+        `[setupAuth] Using database: ${this.env.HYPERDRIVE.connectionString?.substring(0, 50)}...`,
+      );
+
       const _connection = await db.query.connection.findFirst({
         where: eq(connection.id, this.name),
       });
-      if (_connection) {
-        this.driver = connectionToDriver(_connection);
-        this.connection = _connection;
+
+      if (!_connection) {
+        // Try to debug what connections exist
+        const allConnections = await db.query.connection.findMany({
+          columns: { id: true, email: true, providerId: true },
+          limit: 10,
+        });
+        console.error(
+          `[setupAuth] Connection "${this.name}" not found. Available connections:`,
+          allConnections,
+        );
+        throw new Error(`Invalid connection "${this.name}"`);
       }
+
+      this.driver = connectionToDriver(_connection);
+      this.connection = _connection;
       this.ctx.waitUntil(conn.end());
     }
     if (!this.agent) this.agent = await getZeroSocketAgent(this.name);

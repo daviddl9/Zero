@@ -12,9 +12,9 @@ import type {
   User,
 } from '@microsoft/microsoft-graph-types';
 import type { IOutgoingMessage, Label, ParsedMessage } from '../../types';
+import type { MailManager, ManagerConfig, ParsedDraft } from './types';
 import { sanitizeTipTapHtml } from '../sanitize-tip-tap-html';
 import { Client } from '@microsoft/microsoft-graph-client';
-import type { MailManager, ManagerConfig } from './types';
 import { getContext } from 'hono/context-storage';
 import type { CreateDraftData } from '../schemas';
 import type { HonoContext } from '../../ctx';
@@ -72,6 +72,49 @@ export class OutlookMailManager implements MailManager {
         return base64;
       },
       { messageId, attachmentId },
+    );
+  }
+  public getMessageAttachments(id: string) {
+    return this.withErrorHandler(
+      'getMessageAttachments',
+      async () => {
+        const message: Message = await this.graphClient
+          .api(`/me/messages/${id}`)
+          .select('id,attachments')
+          .get();
+
+        if (!message || !message.attachments) {
+          return [];
+        }
+
+        const attachments = await Promise.all(
+          message.attachments.map(async (att) => {
+            if (!att.id || !att.name || att.size === undefined) {
+              return null;
+            }
+
+            const attachmentContent = await this.graphClient
+              .api(`/me/messages/${message.id}/attachments/${att.id}`)
+              .get();
+
+            if (!attachmentContent.contentBytes) {
+              return null;
+            }
+
+            return {
+              filename: att.name,
+              mimeType: att.contentType || 'application/octet-stream',
+              size: att.size,
+              attachmentId: att.id,
+              headers: [],
+              body: attachmentContent.contentBytes,
+            };
+          }),
+        );
+
+        return attachments.filter((a): a is NonNullable<typeof a> => a !== null);
+      },
+      { id },
     );
   }
   public getEmailAliases() {
@@ -133,7 +176,7 @@ export class OutlookMailManager implements MailManager {
           .select('id,displayName,userPrincipalName,mail')
           .get();
 
-        let photoUrl = '';
+        const photoUrl = '';
         try {
           // Requires separate fetching logic
         } catch (error: unknown) {
@@ -698,15 +741,11 @@ export class OutlookMailManager implements MailManager {
         if (data.attachments && data.attachments.length > 0) {
           const regularAttachments = await Promise.all(
             data.attachments.map(async (file) => {
-              const arrayBuffer = await file.arrayBuffer();
-              const buffer = Buffer.from(arrayBuffer);
-              const base64Content = buffer.toString('base64');
-
               return {
                 '@odata.type': '#microsoft.graph.fileAttachment',
                 name: file.name,
                 contentType: file.type || 'application/octet-stream',
-                contentBytes: base64Content,
+                contentBytes: file.base64,
               };
             }),
           );
@@ -1182,15 +1221,11 @@ export class OutlookMailManager implements MailManager {
     if (attachments?.length > 0) {
       const regularAttachments = await Promise.all(
         attachments.map(async (file) => {
-          const arrayBuffer = await file.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const base64Content = buffer.toString('base64');
-
           return {
             '@odata.type': '#microsoft.graph.fileAttachment',
             name: file.name,
             contentType: file.type || 'application/octet-stream',
-            contentBytes: base64Content,
+            contentBytes: file.base64,
           };
         }),
       );
@@ -1203,7 +1238,7 @@ export class OutlookMailManager implements MailManager {
 
     return outlookMessage;
   }
-  private parseOutlookDraft(draftMessage: Message) {
+  private parseOutlookDraft(draftMessage: Message): ParsedDraft | null {
     if (!draftMessage) return null;
 
     const to =
@@ -1228,12 +1263,14 @@ export class OutlookMailManager implements MailManager {
 
     return {
       id: draftMessage.id || '',
-      to,
-      cc,
-      bcc,
-      subject: subject ? he.decode(subject).trim() : '',
-      content,
-      rawMessage: draftMessage, // Include raw Graph message
+      to: to.length > 0 ? to : undefined,
+      cc: cc.length > 0 ? cc : undefined,
+      bcc: bcc.length > 0 ? bcc : undefined,
+      subject: subject ? he.decode(subject).trim() : undefined,
+      content: content || undefined,
+      rawMessage: {
+        internalDate: draftMessage.receivedDateTime || undefined,
+      },
     };
   }
   private async withErrorHandler<T>(
