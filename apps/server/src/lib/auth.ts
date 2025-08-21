@@ -107,6 +107,7 @@ const connectionHandlerHook = async (account: Account) => {
 
   const userInfo = await driver.getUserInfo().catch(async () => {
     if (account.accessToken) {
+      console.log('[connectionHandlerHook] revoking token', account.accessToken);
       await driver.revokeToken(account.accessToken);
       await resetConnection(account.id);
     }
@@ -114,6 +115,7 @@ const connectionHandlerHook = async (account: Account) => {
   });
 
   if (!userInfo?.address) {
+    console.log('[connectionHandlerHook] no user info address', userInfo);
     try {
       await Promise.allSettled(
         [account.accessToken, account.refreshToken]
@@ -135,6 +137,10 @@ const connectionHandlerHook = async (account: Account) => {
     scope: driver.getScope(),
     expiresAt: new Date(Date.now() + (account.accessTokenExpiresAt?.getTime() || 3600000)),
   };
+
+  console.log('[connectionHandlerHook] creating connection', userInfo);
+
+  console.log('[connectionHandlerHook] updatingInfo', updatingInfo);
 
   const db = await getZeroDB(account.userId);
   const [result] = await db.createConnection(

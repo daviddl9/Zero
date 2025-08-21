@@ -1,7 +1,7 @@
 import { ReSummarizeThread, SummarizeMessage, SummarizeThread } from './brain.fallback.prompts';
 import { getSubscriptionFactory } from './factories/subscription-factory.registry';
 import { AiChatPrompt, StyledEmailAssistantSystemPrompt } from './prompts';
-import { resetConnection } from './server-utils';
+// import { resetConnection } from './server-utils';
 import { EPrompts, EProviders } from '../types';
 import { getPromptName } from '../pipelines';
 import { env } from '../env';
@@ -12,7 +12,7 @@ export const enableBrainFunction = async (connection: { id: string; providerId: 
     await subscriptionFactory.subscribe({ body: { connectionId: connection.id } });
   } catch (error) {
     console.error(`Failed to enable brain function: ${error}`);
-    await resetConnection(connection.id);
+    // await resetConnection(connection.id);
   }
 };
 

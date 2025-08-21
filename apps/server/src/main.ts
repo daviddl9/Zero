@@ -152,6 +152,10 @@ export class DbRpcDO extends RpcTarget {
     updatingInfo: {
       expiresAt: Date;
       scope: string;
+      accessToken: string;
+      refreshToken: string;
+      name: string;
+      picture: string;
     },
   ): Promise<{ id: string }[]> {
     return await this.mainDo.createConnection(providerId, email, this.userId, updatingInfo);
@@ -417,9 +421,17 @@ class ZeroDB extends DurableObject<ZeroEnv> {
     updatingInfo: {
       expiresAt: Date;
       scope: string;
+      accessToken: string;
+      refreshToken: string;
+      name: string;
+      picture: string;
     },
   ): Promise<{ id: string }[]> {
-    return await this.db
+    console.log('[createConnection] creating connection', {
+      updatingInfo,
+    });
+
+    const [result] = await this.db
       .insert(connection)
       .values({
         ...updatingInfo,
@@ -437,7 +449,11 @@ class ZeroDB extends DurableObject<ZeroEnv> {
           updatedAt: new Date(),
         },
       })
-      .returning({ id: connection.id });
+      .returning();
+
+    console.log('[createConnection] result', result);
+
+    return [{ id: result.id }];
   }
 
   /**
@@ -857,9 +873,9 @@ export default class Entry extends WorkerEntrypoint<ZeroEnv> {
         await Promise.all(
           batch.messages.map(async (msg: any) => {
             const connectionId = msg.body.connectionId;
-            const providerId = msg.body.providerId;
+            // const providerId = msg.body.providerId;
             try {
-              await enableBrainFunction({ id: connectionId, providerId });
+              // await enableBrainFunction({ id: connectionId, providerId });
             } catch (error) {
               console.error(
                 `Failed to enable brain function for connection ${connectionId}:`,

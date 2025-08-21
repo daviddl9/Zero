@@ -501,7 +501,7 @@ const getCounts = async (connectionId: string): Promise<CountResult[]> => {
 export const sendDoState = async (connectionId: string) => {
   try {
     const agent = await getZeroSocketAgent(connectionId);
-    
+
     const cached = await agent.getCachedDoState();
     if (cached) {
       console.log(`[sendDoState] Using cached data for connection ${connectionId}`);
@@ -522,9 +522,9 @@ export const sendDoState = async (connectionId: string) => {
       getCounts(connectionId),
     ]);
     const shards = await listShards(registry);
-    
+
     await agent.setCachedDoState(size, counts, shards.length);
-    
+
     return agent.broadcastChatMessage({
       type: OutgoingMessageType.Do_State,
       isSyncing: false,
@@ -575,7 +575,7 @@ export const getActiveConnection = async () => {
 
 export const connectionToDriver = (activeConnection: typeof connection.$inferSelect) => {
   if (!activeConnection.accessToken || !activeConnection.refreshToken) {
-    throw new Error(`Invalid connection ${JSON.stringify(activeConnection?.id)}`);
+    throw new Error(`[connectionToDriver] Invalid connection ${JSON.stringify(activeConnection)}`);
   }
 
   return createDriver(activeConnection.providerId, {

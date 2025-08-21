@@ -713,6 +713,8 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
         where: eq(connection.id, this.name),
       });
 
+      console.log(`[setupAuth] Connection: ${JSON.stringify(_connection)}`);
+
       if (!_connection) {
         // Try to debug what connections exist
         const allConnections = await db.query.connection.findMany({
@@ -723,7 +725,7 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
           `[setupAuth] Connection "${this.name}" not found. Available connections:`,
           allConnections,
         );
-        throw new Error(`Invalid connection "${this.name}"`);
+        throw new Error(`[setupAuth] Invalid connection "${this.name}" `);
       }
 
       this.driver = connectionToDriver(_connection);
