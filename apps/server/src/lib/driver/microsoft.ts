@@ -15,27 +15,41 @@ import type { IOutgoingMessage, Label, ParsedMessage } from '../../types';
 import type { MailManager, ManagerConfig, ParsedDraft } from './types';
 import { sanitizeTipTapHtml } from '../sanitize-tip-tap-html';
 import { Client } from '@microsoft/microsoft-graph-client';
-import { getContext } from 'hono/context-storage';
 import type { CreateDraftData } from '../schemas';
-import type { HonoContext } from '../../ctx';
+import { env } from '../../env';
 import * as he from 'he';
 
 export class OutlookMailManager implements MailManager {
   private graphClient: Client;
+  private accessToken: string;
+  private refreshToken: string;
+  private tokenExpiry: number = 0;
 
   constructor(public config: ManagerConfig) {
+    this.accessToken = config.auth.accessToken;
+    this.refreshToken = config.auth.refreshToken;
+
     const getAccessToken = async () => {
-      const c = getContext<HonoContext>();
-      const data = await c.var.auth.api.getAccessToken({
-        body: {
-          providerId: 'microsoft',
-          userId: config.auth.userId,
-          // accountId: config.auth.accountId,
-        },
-        headers: c.req.raw.headers,
-      });
-      if (!data.accessToken) throw new Error('Failed to get access token');
-      return data.accessToken;
+      // Check if token is still valid (with 5 minute buffer)
+      const now = Math.floor(Date.now() / 1000);
+      if (this.accessToken && this.tokenExpiry > now + 300) {
+        return this.accessToken;
+      }
+
+      // Refresh the token
+      try {
+        const tokenData = await this.refreshAccessToken();
+        this.accessToken = tokenData.accessToken;
+        if (tokenData.refreshToken) {
+          this.refreshToken = tokenData.refreshToken;
+        }
+        // Set expiry to 50 minutes from now (tokens usually last 60 minutes)
+        this.tokenExpiry = now + 3000;
+        return this.accessToken;
+      } catch (error) {
+        console.error('Failed to refresh Microsoft access token:', error);
+        throw new Error('Failed to refresh access token');
+      }
     };
 
     this.graphClient = Client.initWithMiddleware({
@@ -43,6 +57,36 @@ export class OutlookMailManager implements MailManager {
         getAccessToken,
       },
     });
+  }
+
+  private async refreshAccessToken(): Promise<{ accessToken: string; refreshToken?: string }> {
+    const response = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: env.MICROSOFT_CLIENT_ID,
+        client_secret: env.MICROSOFT_CLIENT_SECRET,
+        refresh_token: this.refreshToken,
+        grant_type: 'refresh_token',
+        scope: this.getScope(),
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to refresh token: ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      access_token: string;
+      refresh_token?: string;
+    };
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token, // Microsoft sometimes returns a new refresh token
+    };
   }
 
   public getScope(): string {
