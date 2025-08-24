@@ -21,66 +21,66 @@ export enum OutgoingMessageType {
 
 export type IncomingMessage =
   | {
-      type: IncomingMessageType.UseChatRequest;
-      id: string;
-      init: Pick<RequestInit, 'method' | 'headers' | 'body'>;
-    }
+    type: IncomingMessageType.UseChatRequest;
+    id: string;
+    init: Pick<RequestInit, 'method' | 'headers' | 'body'>;
+  }
   | {
-      type: IncomingMessageType.ChatClear;
-    }
+    type: IncomingMessageType.ChatClear;
+  }
   | {
-      type: IncomingMessageType.ChatMessages;
-      messages: undefined[];
-    }
+    type: IncomingMessageType.ChatMessages;
+    messages: undefined[];
+  }
   | {
-      type: IncomingMessageType.ChatRequestCancel;
-      id: string;
-    }
+    type: IncomingMessageType.ChatRequestCancel;
+    id: string;
+  }
   | {
-      type: IncomingMessageType.Mail_List;
-      folder: string;
-      query: string;
-      maxResults: number;
-      labelIds: string[];
-      pageToken: string;
-    }
+    type: IncomingMessageType.Mail_List;
+    folder: string;
+    query: string;
+    maxResults: number;
+    labelIds: string[];
+    pageToken: string;
+  }
   | {
-      type: IncomingMessageType.Mail_Get;
-      threadId: string;
-    };
+    type: IncomingMessageType.Mail_Get;
+    threadId: string;
+  };
 
 export type OutgoingMessage =
   | {
-      type: OutgoingMessageType.ChatMessages;
-      messages: undefined[];
-    }
+    type: OutgoingMessageType.ChatMessages;
+    messages: undefined[];
+  }
   | {
-      type: OutgoingMessageType.UseChatResponse;
-      id: string;
-      body: string;
-      done: boolean;
-    }
+    type: OutgoingMessageType.UseChatResponse;
+    id: string;
+    body: string;
+    done: boolean;
+  }
   | {
-      type: OutgoingMessageType.ChatClear;
-    }
+    type: OutgoingMessageType.ChatClear;
+  }
   | {
-      type: OutgoingMessageType.Mail_List;
-      folder: string;
-    }
+    type: OutgoingMessageType.Mail_List;
+    folder: string;
+  }
   | {
-      type: OutgoingMessageType.Mail_Get;
-      threadId: string;
-    }
+    type: OutgoingMessageType.Mail_Get;
+    threadId: string;
+  }
   | {
-      type: OutgoingMessageType.User_Topics;
-    }
+    type: OutgoingMessageType.User_Topics;
+  }
   | {
-      type: OutgoingMessageType.Do_State;
-      isSyncing: boolean;
-      syncingFolders: string[];
-      storageSize: number;
-      counts: { label: string; count: number }[];
-      shards: number;
-    };
+    type: OutgoingMessageType.Do_State;
+    isSyncing: boolean;
+    syncingFolders: string[];
+    storageSize: number;
+    counts: { label: string; count: number }[];
+    shards: number;
+  };
 
 export type QueueFunc = (name: string, payload: unknown) => Promise<unknown>;
