@@ -1,4 +1,4 @@
-import type { Message as ChatMessage } from 'ai';
+import type { UIMessage as ChatMessage } from 'ai';
 
 export enum IncomingMessageType {
   UseChatRequest = 'cf_agent_use_chat_request',
@@ -30,7 +30,7 @@ export type IncomingMessage =
     }
   | {
       type: IncomingMessageType.ChatMessages;
-      messages: ChatMessage[];
+      messages: undefined[];
     }
   | {
       type: IncomingMessageType.ChatRequestCancel;
@@ -52,7 +52,7 @@ export type IncomingMessage =
 export type OutgoingMessage =
   | {
       type: OutgoingMessageType.ChatMessages;
-      messages: ChatMessage[];
+      messages: undefined[];
     }
   | {
       type: OutgoingMessageType.UseChatResponse;

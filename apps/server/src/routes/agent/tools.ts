@@ -116,7 +116,7 @@ export const getEmbeddingVector = async (
 const getEmail = () =>
   tool({
     description: 'Return a placeholder tag for a specific email thread by ID',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the email thread to retrieve'),
     }),
     execute: async ({ id }) => {
@@ -128,7 +128,7 @@ const getEmail = () =>
 const getThreadSummary = (connectionId: string) =>
   tool({
     description: 'Get the summary of a specific email thread',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the email thread to get the summary of'),
     }),
     execute: async ({ id }) => {
@@ -167,7 +167,7 @@ const getThreadSummary = (connectionId: string) =>
 const composeEmailTool = (connectionId: string) =>
   tool({
     description: 'Compose an email using AI assistance',
-    parameters: z.object({
+    inputSchema: z.object({
       prompt: z.string().describe('The prompt or rough draft for the email'),
       emailSubject: z.string().optional().describe('The subject of the email'),
       to: z.array(z.string()).optional().describe('Recipients of the email'),
@@ -216,7 +216,7 @@ const composeEmailTool = (connectionId: string) =>
 const markAsRead = (connectionId: string) =>
   tool({
     description: 'Mark emails as read',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to mark as read'),
     }),
     execute: async ({ threadIds }) => {
@@ -231,7 +231,7 @@ const markAsRead = (connectionId: string) =>
 const markAsUnread = (connectionId: string) =>
   tool({
     description: 'Mark emails as unread',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to mark as unread'),
     }),
     execute: async ({ threadIds }) => {
@@ -246,7 +246,7 @@ const markAsUnread = (connectionId: string) =>
 const modifyLabels = (connectionId: string) =>
   tool({
     description: 'Modify labels on emails',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to modify'),
       options: z.object({
         addLabels: z
@@ -273,7 +273,7 @@ const modifyLabels = (connectionId: string) =>
 const getUserLabels = (connectionId: string) =>
   tool({
     description: 'Get all user labels',
-    parameters: z.object({}),
+    inputSchema: z.object({}),
     execute: async () => {
       const { stub: agent } = await getZeroAgent(connectionId);
       return await agent.getUserLabels();
@@ -283,7 +283,7 @@ const getUserLabels = (connectionId: string) =>
 const sendEmail = (connectionId: string) =>
   tool({
     description: 'Send a new email',
-    parameters: z.object({
+    inputSchema: z.object({
       to: z.array(
         z.object({
           email: z.string().describe('The email address of the recipient'),
@@ -344,7 +344,7 @@ const sendEmail = (connectionId: string) =>
 const createLabel = (connectionId: string) =>
   tool({
     description: 'Create a new label with custom colors, if it does nto exist already',
-    parameters: z.object({
+    inputSchema: z.object({
       name: z.string().describe('The name of the label to create'),
       backgroundColor: z
         .string()
@@ -369,7 +369,7 @@ const createLabel = (connectionId: string) =>
 const bulkDelete = (connectionId: string) =>
   tool({
     description: 'Move multiple emails to trash by adding the TRASH label',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('Array of email IDs to move to trash'),
     }),
     execute: async ({ threadIds }) => {
@@ -384,7 +384,7 @@ const bulkDelete = (connectionId: string) =>
 const bulkArchive = (connectionId: string) =>
   tool({
     description: 'Move multiple emails to the archive by removing the INBOX label',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('Array of email IDs to move to archive'),
     }),
     execute: async ({ threadIds }) => {
@@ -399,7 +399,7 @@ const bulkArchive = (connectionId: string) =>
 const deleteLabel = (connectionId: string) =>
   tool({
     description: "Delete a label from the user's account",
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the label to delete'),
     }),
     execute: async ({ id }) => {
@@ -412,7 +412,7 @@ const deleteLabel = (connectionId: string) =>
 const buildGmailSearchQuery = () =>
   tool({
     description: 'Build a Gmail search query',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe('The search query to build, provided in natural language'),
     }),
     execute: async (params) => {
@@ -437,7 +437,7 @@ const buildGmailSearchQuery = () =>
 const getCurrentDate = () =>
   tool({
     description: 'Get the current date',
-    parameters: z.object({}).default({}),
+    inputSchema: z.object({}).default({}),
     execute: async () => {
       console.log('[DEBUG] getCurrentDate');
 
@@ -455,7 +455,7 @@ const getCurrentDate = () =>
 export const webSearch = () =>
   tool({
     description: 'Search the web for information using Perplexity AI',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe('The query to search the web for'),
     }),
     execute: async ({ query }) => {
@@ -463,12 +463,28 @@ export const webSearch = () =>
         const response = await generateText({
           model: perplexity('sonar'),
           messages: [
-            { role: 'system', content: 'Be precise and concise.' },
-            { role: 'system', content: 'Do not include sources in your response.' },
-            { role: 'system', content: 'Do not use markdown formatting in your response.' },
-            { role: 'user', content: query },
+            {
+              role: 'system',
+
+              content: 'Be precise and concise.'
+            },
+            {
+              role: 'system',
+
+              content: 'Do not include sources in your response.'
+            },
+            {
+              role: 'system',
+
+              content: 'Do not use markdown formatting in your response.'
+            },
+            {
+              role: 'user',
+
+              content: query
+            },
           ],
-          maxTokens: 1024,
+          maxOutputTokens: 1024,
         });
 
         return response.text;
@@ -499,7 +515,7 @@ export const tools = async (connectionId: string, ragEffect: boolean = false) =>
     [Tools.InboxRag]: tool({
       description:
         'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().describe('The query to search the inbox for'),
         maxResults: z.number().describe('The maximum number of results to return').default(10),
         folder: z.string().describe('The folder to search the inbox for').default('inbox'),
@@ -517,7 +533,7 @@ export const tools = async (connectionId: string, ragEffect: boolean = false) =>
     [Tools.InboxRag]: tool({
       description:
         'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().describe('The query to search the inbox for'),
       }),
     }),

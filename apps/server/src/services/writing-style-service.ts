@@ -342,7 +342,7 @@ const extractStyleMatrix = async (emailBody: string) => {
     model: google('gemini-2.0-flash'),
     schema,
     temperature: 0,
-    maxTokens: 600,
+    maxOutputTokens: 600,
     maxRetries: 5,
     system: StyleMatrixExtractorPrompt(),
     prompt: emailBody.trim(),

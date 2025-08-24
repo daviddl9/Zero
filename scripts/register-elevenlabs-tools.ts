@@ -32,21 +32,21 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: Tools.GetThread,
     description: 'Return a placeholder tag for a specific email thread by ID',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the email thread to retrieve'),
     }),
   },
   {
     name: Tools.GetThreadSummary,
     description: 'Get the summary of a specific email thread',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The threadId of the email thread to get the summary of'),
     }),
   },
   {
     name: Tools.ComposeEmail,
     description: 'Compose an email using AI assistance',
-    parameters: z.object({
+    inputSchema: z.object({
       prompt: z.string().describe('The prompt or rough draft for the email'),
       emailSubject: z.string().optional().describe('The subject of the email'),
       to: z.array(z.string()).optional().describe('Recipients of the email'),
@@ -68,21 +68,21 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: Tools.MarkThreadsRead,
     description: 'Mark emails as read',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to mark as read'),
     }),
   },
   {
     name: Tools.MarkThreadsUnread,
     description: 'Mark emails as unread',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to mark as unread'),
     }),
   },
   {
     name: Tools.ModifyLabels,
     description: 'Modify labels on emails',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to modify'),
       options: z.object({
         addLabels: z.array(z.string()).default([]).describe('The labels to add'),
@@ -93,12 +93,12 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: Tools.GetUserLabels,
     description: 'Get all user labels',
-    parameters: z.object({}),
+    inputSchema: z.object({}),
   },
   {
     name: Tools.SendEmail,
     description: 'Send a new email',
-    parameters: z.object({
+    inputSchema: z.object({
       to: z.array(
         z.object({
           email: z.string().describe('The email address of the recipient'),
@@ -130,7 +130,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: Tools.CreateLabel,
     description: 'Create a new label with custom colors, if it does not exist already',
-    parameters: z.object({
+    inputSchema: z.object({
       name: z.string().describe('The name of the label to create'),
       backgroundColor: z.string().describe('The background color of the label in hex format'),
       textColor: z.string().describe('The text color of the label in hex format'),
@@ -139,47 +139,47 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: Tools.BulkDelete,
     description: 'Move multiple emails to trash by adding the TRASH label',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('Array of email IDs to move to trash'),
     }),
   },
   {
     name: Tools.BulkArchive,
     description: 'Move multiple emails to the archive by removing the INBOX label',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('Array of email IDs to move to archive'),
     }),
   },
   {
     name: Tools.DeleteLabel,
     description: "Delete a label from the user's account",
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the label to delete'),
     }),
   },
   {
     name: Tools.BuildGmailSearchQuery,
     description: 'Build a Gmail search query',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe('The search query to build, provided in natural language'),
     }),
   },
   {
     name: 'getCurrentDate',
     description: 'Get the current date',
-    parameters: z.object({}).default({}),
+    inputSchema: z.object({}).default({}),
   },
   {
     name: 'getLabel',
     description: 'Get a label',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the label to get'),
     }),
   },
   {
     name: Tools.WebSearch,
     description: 'Search the web for information using Perplexity AI',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe('The query to search the web for'),
     }),
   },
@@ -187,7 +187,7 @@ export const toolDefinitions: ToolDefinition[] = [
     name: Tools.InboxRag,
     description:
       'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe('The query to search the inbox for'),
       maxResults: z.number().describe('The maximum number of results to return').default(10),
     }),

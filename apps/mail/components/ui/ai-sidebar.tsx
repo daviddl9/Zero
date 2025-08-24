@@ -395,7 +395,7 @@ function AISidebar({ className }: AISidebarProps) {
       return [];
     },
     agent,
-    maxSteps: 10,
+    stopWhen: (step) => step.steps.length >= 10,
     body: {
       threadId: threadId ?? undefined,
       currentFolder: folder ?? undefined,

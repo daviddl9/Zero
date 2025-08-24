@@ -95,7 +95,7 @@ ${sample.join('\n')}`;
       schema,
       system: systemPrompt,
       prompt: userPrompt,
-      maxTokens: 150,
+      maxOutputTokens: 150,
       temperature: 0.2,
     });
 

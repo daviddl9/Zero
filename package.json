@@ -52,7 +52,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "zod-to-json-schema": "3.24.6",
-    "zod": "3.25.42"
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.24.6"
   }
 }

@@ -133,7 +133,7 @@ aiRouter.post('/call', async (c) => {
     system: systemPrompt,
     prompt: data.query,
     tools: toolset,
-    maxSteps: 10,
+    stopWhen: (step) => step.steps.length >= 10,
   });
 
   return new Response(text, {

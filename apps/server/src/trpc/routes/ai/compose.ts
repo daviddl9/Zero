@@ -60,46 +60,48 @@ export async function composeEmail(input: ComposeEmailInput) {
   const messages =
     threadMessages.length > 0
       ? [
-          {
-            role: 'user' as const,
-            content: "I'm going to give you the current email thread replies one by one.",
-          } as const,
-          {
-            role: 'assistant' as const,
-            content: 'Got it. Please proceed with the thread replies.',
-          } as const,
-          ...threadUserMessages,
-          {
-            role: 'assistant' as const,
-            content: 'Got it. Please proceed with the email composition prompt.',
-          },
-        ]
+        {
+          role: 'user' as const,
+          content: "I'm going to give you the current email thread replies one by one.",
+        } as const,
+        {
+          role: 'assistant' as const,
+          content: 'Got it. Please proceed with the thread replies.',
+        } as const,
+        ...threadUserMessages,
+        {
+          role: 'assistant' as const,
+          content: 'Got it. Please proceed with the email composition prompt.',
+        },
+      ]
       : [
-          {
-            role: 'user' as const,
-            content: 'Now, I will give you the prompt to write the email.',
-          },
-          {
-            role: 'assistant' as const,
-            content: 'Ok, please continue with the email composition prompt.',
-          },
-        ];
+        {
+          role: 'user' as const,
+          content: 'Now, I will give you the prompt to write the email.',
+        },
+        {
+          role: 'assistant' as const,
+          content: 'Ok, please continue with the email composition prompt.',
+        },
+      ];
 
   const { text } = await generateText({
     model: openai(env.OPENAI_MINI_MODEL || 'gpt-4o-mini'),
     messages: [
       {
         role: 'system',
-        content: systemPrompt,
+
+        content: systemPrompt
       },
       ...messages,
       {
         role: 'user',
-        content: userPrompt,
+
+        content: userPrompt
       },
     ],
-    maxSteps: 10,
-    maxTokens: 2_000,
+    stopWhen: (step) => step.steps.length >= 10,
+    maxOutputTokens: 2_000,
     temperature: 0.35,
     frequencyPenalty: 0.2,
     presencePenalty: 0.1,
@@ -271,15 +273,16 @@ const generateSubject = async (message: string, styleProfile?: WritingStyleMatri
     messages: [
       {
         role: 'system',
-        content:
-          'You are an email subject line generator. Generate a concise, clear subject line that summarizes the main point of the email. The subject should be professional and under 100 characters.',
+
+        content: 'You are an email subject line generator. Generate a concise, clear subject line that summarizes the main point of the email. The subject should be professional and under 100 characters.'
       },
       {
         role: 'user',
-        content: parts.join('\n\n'),
+
+        content: parts.join('\n\n')
       },
     ],
-    maxTokens: 50,
+    maxOutputTokens: 50,
     temperature: 0.3,
     frequencyPenalty: 0.1,
     presencePenalty: 0.1,

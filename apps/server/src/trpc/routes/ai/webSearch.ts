@@ -10,8 +10,12 @@ export const webSearch = activeDriverProcedure
       model: perplexity('sonar'),
       system:
         'You are a helpful assistant that can search the web for information. NEVER include sources or sources references in your response. NEVER use markdown formatting in your response.',
-      messages: [{ role: 'user', content: input.query }],
-      maxTokens: 1024,
+      messages: [{
+        role: 'user',
+
+        content: input.query
+      }],
+      maxOutputTokens: 1024,
     });
     return result;
   });

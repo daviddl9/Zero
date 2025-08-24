@@ -1,4 +1,4 @@
-import { streamText, tool, type DataStreamWriter, type ToolSet } from 'ai';
+import { streamText, tool, type ToolSet } from 'ai';
 import { perplexity } from '@ai-sdk/perplexity';
 
 import { getZeroAgent } from '../../lib/server-utils';
@@ -38,7 +38,7 @@ export class ToolOrchestrator {
     if (toolName === Tools.WebSearch) {
       return tool({
         description: 'Search the web for information using Perplexity AI',
-        parameters: z.object({
+        inputSchema: z.object({
           query: z.string().describe('The query to search the web for'),
         }),
         execute: async ({ query }, { toolCallId }) => {
@@ -46,16 +46,32 @@ export class ToolOrchestrator {
             const response = streamText({
               model: perplexity('sonar'),
               messages: [
-                { role: 'system', content: 'Be precise and concise.' },
-                { role: 'system', content: 'Do not include sources in your response.' },
-                { role: 'system', content: 'Do not use markdown formatting in your response.' },
-                { role: 'user', content: query },
+                {
+                  role: 'system',
+
+                  content: 'Be precise and concise.'
+                },
+                {
+                  role: 'system',
+
+                  content: 'Do not include sources in your response.'
+                },
+                {
+                  role: 'system',
+
+                  content: 'Do not use markdown formatting in your response.'
+                },
+                {
+                  role: 'user',
+
+                  content: query
+                },
               ],
-              maxTokens: 1024,
+              maxOutputTokens: 1024,
             });
 
             // Stream the response directly to the data stream
-            response.mergeIntoDataStream(this.dataStream);
+            response.toUIMessageStream().pipeTo(this.dataStream);
 
             // Return a placeholder result since the actual streaming happens above
             return { type: 'streaming_response', toolName, toolCallId };
@@ -71,7 +87,7 @@ export class ToolOrchestrator {
       return tool({
         description:
           'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-        parameters: z.object({
+        inputSchema: z.object({
           query: z.string().describe('The query to search the inbox for'),
           folder: z.string().describe('The folder to search the inbox for').default('inbox'),
           maxResults: z.number().describe('The maximum number of results to return').default(10),

@@ -24,8 +24,6 @@ import {
   type DB,
 } from './db';
 import {
-  appendResponseMessages,
-  createDataStreamResponse,
   generateText,
   streamText,
   type StreamTextOnFinishCallback,
@@ -61,7 +59,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { connection } from '../../db/schema';
 import type { WSMessage } from 'partyserver';
 import { tools as authTools } from './tools';
-import { processToolCalls } from './utils';
+import { processToolCalls, convertOldMessagesToAIv5 } from './utils';
 import { type ZeroEnv } from '../../env';
 import { type Connection } from 'agents';
 import { openai } from '@ai-sdk/openai';
@@ -70,7 +68,7 @@ import { threads } from './db/schema';
 import { Effect, pipe } from 'effect';
 import { groq } from '@ai-sdk/groq';
 import { createDb } from '../../db';
-import type { Message } from 'ai';
+import { convertToModelMessages } from 'ai';
 import { create } from './db';
 
 const decoder = new TextDecoder();
@@ -441,8 +439,8 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
             data !== null &&
             'topics' in data &&
             'timestamp' in data &&
-            Array.isArray((data as any).topics) &&
-            typeof (data as any).timestamp === 'number'
+            Array.isArray((data as CachedTopics).topics) &&
+            typeof (data as CachedTopics).timestamp === 'number'
           );
         };
 
@@ -1747,55 +1745,73 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
     currentFolder: string,
     currentFilter: string,
   ) {
-    const dataStreamResponse = createDataStreamResponse({
-      execute: async (dataStream) => {
-        if (this.name === 'general') return;
-        const connectionId = this.name;
-        const orchestrator = new ToolOrchestrator(dataStream, connectionId);
+    // In AI SDK v5, we need to handle streaming differently
+    const self = this;
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          try {
+            if (self.name === 'general') return;
+            const connectionId = self.name;
+            const orchestrator = new ToolOrchestrator(controller, connectionId);
 
-        const mcpTools = this.mcp.unstable_getAITools();
+            const mcpTools = self.mcp.unstable_getAITools();
 
-        const rawTools = {
-          ...(await authTools(connectionId)),
-          ...mcpTools,
-        };
+            const rawTools = {
+              ...(await authTools(connectionId)),
+              ...mcpTools,
+            };
 
-        const tools = orchestrator.processTools(rawTools);
-        const processedMessages = await processToolCalls(
-          {
-            messages: this.messages,
-            dataStream,
-            tools,
-          },
-          {},
-        );
+            const tools = orchestrator.processTools(rawTools);
+            // Convert old AI SDK v4 messages to AI SDK v5 format
+            const modelMessages = convertOldMessagesToAIv5(self.messages);
+            const processedMessages = await processToolCalls(
+              {
+                messages: modelMessages,
+                dataStream: controller,
+                tools,
+              },
+              {},
+            );
 
-        const model =
-          this.env.USE_OPENAI === 'true'
-            ? groq('openai/gpt-oss-120b')
-            : anthropic(this.env.OPENAI_MODEL || 'claude-3-7-sonnet-20250219');
+            const model =
+              self.env.USE_OPENAI === 'true'
+                ? groq('openai/gpt-oss-120b')
+                : anthropic(self.env.OPENAI_MODEL || 'claude-3-7-sonnet-20250219');
 
-        const result = streamText({
-          model,
-          maxSteps: 10,
-          messages: processedMessages,
-          tools,
-          onFinish,
-          onError: (error) => {
-            console.error('Error in streamText', error);
-          },
-          system: await getPrompt(getPromptName(connectionId, EPrompts.Chat), AiChatPrompt(), {
-            currentThreadId,
-            currentFolder,
-            currentFilter,
-          }),
-        });
+            const result = streamText({
+              model,
+              stopWhen: (step) => step.steps.length >= 10,
+              messages: convertToModelMessages(processedMessages),
+              tools,
+              onFinish,
+              onError: (error) => {
+                console.error('Error in streamText', error);
+              },
+              system: await getPrompt(getPromptName(connectionId, EPrompts.Chat), AiChatPrompt(), {
+                currentThreadId,
+                currentFolder,
+                currentFilter,
+              }),
+            });
 
-        result.mergeIntoDataStream(dataStream);
-      },
-    });
-
-    return dataStreamResponse;
+            // In AI SDK v5, we use toUIMessageStream instead of mergeIntoUIMessageStream
+            for await (const chunk of result.toUIMessageStream()) {
+              controller.enqueue(new TextEncoder().encode(JSON.stringify(chunk)));
+            }
+            controller.close();
+          } catch (error) {
+            console.error('Error in data stream:', error);
+            controller.error(error);
+          }
+        },
+      }),
+      {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+        },
+      }
+    );
   }
 
   private async tryCatchChat<T>(fn: () => T | Promise<T>) {
@@ -1860,16 +1876,16 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
             threadId: string;
             currentFolder: string;
             currentFilter: string;
-            messages: Message[];
+            messages: Array<{ role: string; content: string }>;
           };
           this.broadcastChatMessage(
             {
               type: OutgoingMessageType.ChatMessages,
-              messages,
+              messages: messages as any,
             },
             [connection.id],
           );
-          await this.persistMessages(messages, [connection.id]);
+          await this.persistMessages(messages as any, [connection.id]);
 
           const chatMessageId = data.id;
           //   const abortSignal = this.getAbortSignal(chatMessageId);
@@ -1877,12 +1893,10 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
           return this.tryCatchChat(async () => {
             const response = await this.onChatMessageWithContext(
               async ({ response }) => {
-                const finalMessages = appendResponseMessages({
-                  messages,
-                  responseMessages: response.messages,
-                });
+                // In AI SDK v5, we need to handle message merging differently
+                const finalMessages = [...messages, ...response.messages];
 
-                await this.persistMessages(finalMessages, [connection.id]);
+                await this.persistMessages(finalMessages as any, [connection.id]);
                 this.removeAbortController(chatMessageId);
               },
               threadId,
@@ -1921,7 +1935,7 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
           break;
         }
         case IncomingMessageType.ChatMessages: {
-          await this.persistMessages(data.messages, [connection.id]);
+          await this.persistMessages(data.messages as any, [connection.id]);
           break;
         }
         case IncomingMessageType.ChatRequestCancel: {

@@ -10,7 +10,7 @@ import { TextShimmer } from '../ui/text-shimmer';
 import { useThread } from '@/hooks/use-threads';
 import { MailLabels } from '../mail/mail-list';
 import { cn, getEmailLogo } from '@/lib/utils';
-import type { Message as AiMessage } from 'ai';
+import type { UIMessage as AiMessage } from 'ai';
 import { VoiceButton } from '../voice-button';
 import { EditorContent } from '@tiptap/react';
 import { CurvedArrow } from '../icons/icons';
@@ -134,7 +134,7 @@ const ExampleQueries = ({ onQueryClick }: { onQueryClick: (query: string) => voi
 // }
 
 export interface AIChatProps {
-  messages: AiMessage[];
+  messages: undefined[];
   input: string;
   setInput: (input: string) => void;
   error?: Error;
@@ -143,7 +143,7 @@ export interface AIChatProps {
   stop: () => void;
   className?: string;
   onModelChange?: (model: string) => void;
-  setMessages: (messages: AiMessage[]) => void;
+  setMessages: (messages: undefined[]) => void;
 }
 
 // Subcomponents for ToolResponse
