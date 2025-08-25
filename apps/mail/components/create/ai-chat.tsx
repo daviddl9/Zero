@@ -146,9 +146,7 @@ export interface AIChatProps {
   setMessages: (messages: AiMessage[]) => void;
 }
 
-// Subcomponents for ToolResponse
 const GetThreadToolResponse = ({ result, args }: { result: any; args: any }) => {
-  // Extract threadId from result or args
   let threadId: string | null = null;
   if (typeof result === 'string') {
     const match = result.match(/<thread id="([^"]+)" ?\/>/);
@@ -181,7 +179,6 @@ const ComposeEmailToolResponse = ({ result }: { result: any }) => {
   );
 };
 
-// Main ToolResponse switcher
 const ToolResponse = ({ toolName, result, args }: { toolName: string; result: any; args: any }) => {
   switch (toolName) {
     case Tools.GetThread:
@@ -223,15 +220,12 @@ export function AIChat({
     }
   }, [status, scrollToBottom]);
 
-  // Track if we're waiting for a voice response
   const [isVoiceQuery, setIsVoiceQuery] = useState(false);
 
-  // When a new assistant message comes in, check if it's a voice response
   useEffect(() => {
     if (isVoiceQuery && messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.role === 'assistant') {
-        // Extract text content from the message
         const textContent = lastMessage.parts
           .filter((part) => part.type === 'text' && 'text' in part)
           .map((part) => (part as any).text)
@@ -307,7 +301,6 @@ export function AIChat({
                 Ask to do or show anything using natural language
               </p>
 
-              {/* Example Thread */}
               <ExampleQueries onQueryClick={handleQueryClick} />
             </div>
           ) : (
@@ -395,7 +388,6 @@ export function AIChat({
         </div>
       </div>
 
-      {/* Fixed input at bottom */}
       <div className={cn('mb-4 shrink-0 px-4', isFullScreen ? 'px-0' : '')}>
         <div className="bg-offsetLight relative rounded-lg p-2 dark:bg-[#202020]">
           <div className="flex flex-col">
@@ -417,15 +409,12 @@ export function AIChat({
               <div className="flex justify-end gap-1">
                 <VoiceProvider
                   onTranscriptComplete={(transcript) => {
-                    // Mark this as a voice query
                     setIsVoiceQuery(true);
-                    // Set the transcript as input and submit the form
                     editor.commands.setContent(transcript);
                     setInput(transcript);
                     onSubmit({ preventDefault: () => {} } as React.FormEvent<HTMLFormElement>);
                   }}
                   onResponseReady={(callback) => {
-                    // Store the callback to be called when we get the AI response
                     voiceResponseCallbackRef.current = callback;
                   }}
                 >
