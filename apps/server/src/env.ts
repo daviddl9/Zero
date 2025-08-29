@@ -82,6 +82,8 @@ export type ZeroEnv = {
   MICROSOFT_CLIENT_SECRET: string;
   VOICE_SECRET: string;
   ARCADE_API_KEY: string;
+  ARCADE_CLIENT_ID: string;
+  ARCADE_CLIENT_SECRET: string;
   OPENAI_MODEL: string;
   OPENAI_MINI_MODEL: string;
   ANTHROPIC_API_KEY: string;

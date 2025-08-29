@@ -45,8 +45,9 @@ import {
 import type { IGetThreadResponse, IGetThreadsResponse, MailManager } from '../../lib/driver/types';
 import { connectionToDriver, getZeroSocketAgent, reSyncThread } from '../../lib/server-utils';
 import { generateWhatUserCaresAbout, type UserTopic } from '../../lib/analyze/interests';
-import { DurableObjectOAuthClientProvider } from 'agents/mcp/do-oauth-client-provider';
+
 import { AiChatPrompt, GmailSearchAssistantSystemPrompt } from '../../lib/prompts';
+import { loadUserArcadeTools } from '../../lib/arcade-loader';
 import { Migratable, Queryable, Transfer } from 'dormroom';
 import type { CreateDraftData } from '../../lib/schemas';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
@@ -1700,32 +1701,10 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
 export class ZeroAgent extends AIChatAgent<ZeroEnv> {
   private chatMessageAbortControllers: Map<string, AbortController> = new Map();
 
-  async registerZeroMCP() {
-    await this.mcp.connect(this.env.VITE_PUBLIC_BACKEND_URL + '/sse', {
-      transport: {
-        authProvider: new DurableObjectOAuthClientProvider(
-          this.ctx.storage,
-          'zero-mcp',
-          this.env.VITE_PUBLIC_BACKEND_URL,
-        ),
-      },
-    });
-  }
-
-  async registerThinkingMCP() {
-    await this.mcp.connect(this.env.VITE_PUBLIC_BACKEND_URL + '/mcp/thinking/sse', {
-      transport: {
-        authProvider: new DurableObjectOAuthClientProvider(
-          this.ctx.storage,
-          'thinking-mcp',
-          this.env.VITE_PUBLIC_BACKEND_URL,
-        ),
-      },
-    });
-  }
+  // MCP registration methods removed - using Arcade instead
 
   onStart() {
-    this.registerThinkingMCP();
+    // MCP disabled - using Arcade for integrations
   }
 
   async onConnect(connection: Connection): Promise<void> {
@@ -1753,11 +1732,33 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
         const connectionId = this.name;
         const orchestrator = new ToolOrchestrator(dataStream, connectionId);
 
-        const mcpTools = this.mcp.unstable_getAITools();
+        // Load user's Arcade tools
+        let userArcadeTools = {};
+
+        // Get the connection from the database to access userId
+        if (connectionId && connectionId !== 'general') {
+          const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
+          try {
+            const connectionData = await db.query.connection.findFirst({
+              where: eq(connection.id, connectionId),
+            });
+
+            if (connectionData?.userId) {
+              const arcadeResult = await loadUserArcadeTools(
+                connectionData.userId,
+                this.env.HYPERDRIVE.connectionString,
+                this.env.ARCADE_API_KEY,
+              );
+              userArcadeTools = arcadeResult.tools;
+            }
+          } finally {
+            await conn.end();
+          }
+        }
 
         const rawTools = {
           ...(await authTools(connectionId)),
-          ...mcpTools,
+          ...userArcadeTools,
         };
 
         const tools = orchestrator.processTools(rawTools);

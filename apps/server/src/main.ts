@@ -1,10 +1,4 @@
 import {
-  createUpdatedMatrixFromNewEmail,
-  initializeStyleMatrixFromEmail,
-  type EmailMatrix,
-  type WritingStyleMatrix,
-} from './services/writing-style-service';
-import {
   account,
   connection,
   note,
@@ -14,7 +8,15 @@ import {
   userSettings,
   writingStyleMatrix,
   emailTemplate,
+  arcadeConnection,
+  arcadeAuthState,
 } from './db/schema';
+import {
+  createUpdatedMatrixFromNewEmail,
+  initializeStyleMatrixFromEmail,
+  type EmailMatrix,
+  type WritingStyleMatrix,
+} from './services/writing-style-service';
 import {
   toAttachmentFiles,
   type SerializedAttachment,
@@ -31,12 +33,12 @@ import { oAuthDiscoveryMetadata } from 'better-auth/plugins';
 import { EProviders, type IEmailSendBatch } from './types';
 import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 import { ThinkingMCP } from './lib/sequential-thinking';
-
 import { contextStorage } from 'hono/context-storage';
 import { defaultUserSettings } from './lib/schemas';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { enableBrainFunction } from './lib/brain';
 import { trpcServer } from '@hono/trpc-server';
+import { arcadeRouter } from './routes/arcade';
 import { agentsMiddleware } from 'hono-agents';
 import { ZeroMCP } from './routes/agent/mcp';
 import { publicRouter } from './routes/auth';
@@ -199,6 +201,39 @@ export class DbRpcDO extends RpcTarget {
 
   async updateEmailTemplate(templateId: string, data: Partial<typeof emailTemplate.$inferInsert>) {
     return await this.mainDo.updateEmailTemplate(this.userId, templateId, data);
+  }
+
+  // Arcade connection methods
+  async findManyArcadeConnections(): Promise<(typeof arcadeConnection.$inferSelect)[]> {
+    return await this.mainDo.findManyArcadeConnections(this.userId);
+  }
+
+  async findArcadeConnection(
+    connectionId: string,
+  ): Promise<typeof arcadeConnection.$inferSelect | undefined> {
+    return await this.mainDo.findArcadeConnection(this.userId, connectionId);
+  }
+
+  async createArcadeConnection(data: Omit<typeof arcadeConnection.$inferInsert, 'userId'>) {
+    return await this.mainDo.createArcadeConnection(this.userId, data);
+  }
+
+  async deleteArcadeConnection(connectionId: string) {
+    return await this.mainDo.deleteArcadeConnection(this.userId, connectionId);
+  }
+
+  async storeArcadeAuthState(state: string, toolkit: string) {
+    return await this.mainDo.storeArcadeAuthState(state, this.userId, toolkit);
+  }
+
+  async verifyArcadeAuthState(
+    state: string,
+  ): Promise<typeof arcadeAuthState.$inferSelect | undefined> {
+    return await this.mainDo.verifyArcadeAuthState(state);
+  }
+
+  async deleteArcadeAuthState(state: string) {
+    return await this.mainDo.deleteArcadeAuthState(state);
   }
 }
 
@@ -562,6 +597,74 @@ class ZeroDB extends DurableObject<ZeroEnv> {
       .where(and(eq(emailTemplate.id, templateId), eq(emailTemplate.userId, userId)))
       .returning();
   }
+
+  // Arcade connection methods
+  async findManyArcadeConnections(
+    userId: string,
+  ): Promise<(typeof arcadeConnection.$inferSelect)[]> {
+    return await this.db.query.arcadeConnection.findMany({
+      where: eq(arcadeConnection.userId, userId),
+      orderBy: desc(arcadeConnection.createdAt),
+    });
+  }
+
+  async findArcadeConnection(
+    userId: string,
+    connectionId: string,
+  ): Promise<typeof arcadeConnection.$inferSelect | undefined> {
+    return await this.db.query.arcadeConnection.findFirst({
+      where: and(eq(arcadeConnection.userId, userId), eq(arcadeConnection.id, connectionId)),
+    });
+  }
+
+  async createArcadeConnection(
+    userId: string,
+    data: Omit<typeof arcadeConnection.$inferInsert, 'userId'>,
+  ) {
+    return await this.db
+      .insert(arcadeConnection)
+      .values({
+        ...data,
+        userId,
+      })
+      .returning();
+  }
+
+  async deleteArcadeConnection(userId: string, connectionId: string) {
+    return await this.db
+      .delete(arcadeConnection)
+      .where(and(eq(arcadeConnection.userId, userId), eq(arcadeConnection.id, connectionId)));
+  }
+
+  async storeArcadeAuthState(state: string, userId: string, toolkit: string) {
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    return await this.db.insert(arcadeAuthState).values({
+      state,
+      userId,
+      toolkit,
+      expiresAt,
+    });
+  }
+
+  async verifyArcadeAuthState(
+    state: string,
+  ): Promise<typeof arcadeAuthState.$inferSelect | undefined> {
+    const authState = await this.db.query.arcadeAuthState.findFirst({
+      where: eq(arcadeAuthState.state, state),
+    });
+
+    if (authState && authState.expiresAt < new Date()) {
+      // Expired, delete it
+      await this.deleteArcadeAuthState(state);
+      return undefined;
+    }
+
+    return authState;
+  }
+
+  async deleteArcadeAuthState(state: string) {
+    return await this.db.delete(arcadeAuthState).where(eq(arcadeAuthState.state, state));
+  }
 }
 
 // Utility function to hash IP addresses for PII protection
@@ -576,7 +679,7 @@ function hashIpAddress(ip: string | undefined): string | undefined {
 
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
 
@@ -610,13 +713,18 @@ const api = new Hono<HonoContext>()
     });
 
     // Start authentication span
-    const authSpan = TraceContext.startSpan(traceId, 'authentication', {
-      method: c.req.method,
-      url: c.req.url,
-      hasAuthHeader: !!c.req.header('Authorization'),
-    }, {
-      'auth.method': c.req.header('Authorization') ? 'bearer_token' : 'session_cookie'
-    });
+    const authSpan = TraceContext.startSpan(
+      traceId,
+      'authentication',
+      {
+        method: c.req.method,
+        url: c.req.url,
+        hasAuthHeader: !!c.req.header('Authorization'),
+      },
+      {
+        'auth.method': c.req.header('Authorization') ? 'bearer_token' : 'session_cookie',
+      },
+    );
 
     const auth = createAuth();
     c.set('auth', auth);
@@ -625,11 +733,16 @@ const api = new Hono<HonoContext>()
 
     if (c.req.header('Authorization') && !session?.user) {
       // Start token verification span
-      const tokenSpan = TraceContext.startSpan(traceId, 'token_verification', {
-        tokenPresent: true,
-      }, {
-        'auth.token_type': 'jwt'
-      });
+      const tokenSpan = TraceContext.startSpan(
+        traceId,
+        'token_verification',
+        {
+          tokenPresent: true,
+        },
+        {
+          'auth.token_type': 'jwt',
+        },
+      );
 
       const token = c.req.header('Authorization')?.split(' ')[1];
 
@@ -657,10 +770,15 @@ const api = new Hono<HonoContext>()
             });
           }
         } catch (error) {
-          TraceContext.completeSpan(traceId, tokenSpan.id, {
-            success: false,
-            reason: 'token_verification_failed',
-          }, error instanceof Error ? error.message : 'Unknown token error');
+          TraceContext.completeSpan(
+            traceId,
+            tokenSpan.id,
+            {
+              success: false,
+              reason: 'token_verification_failed',
+            },
+            error instanceof Error ? error.message : 'Unknown token error',
+          );
         }
       } else {
         TraceContext.completeSpan(traceId, tokenSpan.id, {
@@ -674,7 +792,7 @@ const api = new Hono<HonoContext>()
     TraceContext.completeSpan(traceId, authSpan.id, {
       authenticated: !!c.var.sessionUser,
       userId: c.var.sessionUser?.id,
-      authMethod: session?.user ? 'session' : (c.req.header('Authorization') ? 'token' : 'none'),
+      authMethod: session?.user ? 'session' : c.req.header('Authorization') ? 'token' : 'none',
     });
 
     // Update trace metadata with user info
@@ -691,11 +809,16 @@ const api = new Hono<HonoContext>()
       await next();
       // Don't complete the request span here - let TRPC middleware handle it
     } catch (error) {
-      TraceContext.completeSpan(traceId, requestSpan.id, {
-        success: false,
+      TraceContext.completeSpan(
+        traceId,
+        requestSpan.id,
+        {
+          success: false,
 
-        statusCode: c.res.status,
-      }, error instanceof Error ? error.message : 'Unknown request error');
+          statusCode: c.res.status,
+        },
+        error instanceof Error ? error.message : 'Unknown request error',
+      );
       throw error;
     }
     // Note: Trace will be completed by TRPC middleware after logging
@@ -706,6 +829,7 @@ const api = new Hono<HonoContext>()
   .route('/ai', aiRouter)
   .route('/autumn', autumnApi)
   .route('/public', publicRouter)
+  .route('/arcade', arcadeRouter)
   .on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {
     return c.var.auth.handler(c.req.raw);
   })

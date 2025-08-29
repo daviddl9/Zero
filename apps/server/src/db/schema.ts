@@ -322,3 +322,44 @@ export const emailTemplate = createTable(
     unique('mail0_email_template_user_id_name_unique').on(t.userId, t.name),
   ],
 );
+
+export const arcadeConnection = createTable(
+  'arcade_connection',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    toolkit: text('toolkit').notNull(), // e.g. 'gmail', 'github', 'slack'
+    status: text('status').$type<'connected' | 'error'>().notNull().default('connected'),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    expiresAt: timestamp('expires_at'),
+    authorizedAt: timestamp('authorized_at').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('arcade_connection_user_id_idx').on(t.userId),
+    index('arcade_connection_toolkit_idx').on(t.toolkit),
+    index('arcade_connection_status_idx').on(t.status),
+    unique('arcade_connection_user_toolkit_unique').on(t.userId, t.toolkit),
+  ],
+);
+
+export const arcadeAuthState = createTable(
+  'arcade_auth_state',
+  {
+    state: text('state').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    toolkit: text('toolkit').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    expiresAt: timestamp('expires_at').notNull(), // Clean up old states
+  },
+  (t) => [
+    index('arcade_auth_state_user_id_idx').on(t.userId),
+    index('arcade_auth_state_expires_at_idx').on(t.expiresAt),
+  ],
+);
