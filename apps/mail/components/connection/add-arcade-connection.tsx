@@ -10,13 +10,14 @@ import { useArcadeConnections } from '@/hooks/use-arcade-connection';
 import { Loader2, CheckCircle2, Sparkles } from 'lucide-react';
 import { useTRPC } from '@/providers/query-provider';
 import { useMutation } from '@tanstack/react-query';
-import { GitHub } from '../icons/icons';
+import { GitHub, Linear } from '../icons/icons';
 import { Button } from '../ui/button';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 const toolkitIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   github: GitHub,
+  linear: Linear,
 };
 
 export const AddArcadeConnectionDialog = ({
@@ -80,7 +81,7 @@ export const AddArcadeConnectionDialog = ({
   };
 
   const isConnected = (toolkit: string) => {
-    return connections.some((c) => c.toolkit === toolkit);
+    return connections.some((c) => c.provider_id!.split('-')[0] === toolkit.toLowerCase());
   };
 
   return (
@@ -105,9 +106,9 @@ export const AddArcadeConnectionDialog = ({
             <p className="mt-1 text-xs">Please check your Arcade API key configuration</p>
           </div>
         ) : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 space-y-3">
             {toolkits.map((toolkit) => {
-              const Icon = toolkitIcons[toolkit.name] || Sparkles;
+              const Icon = toolkitIcons[toolkit.name.toLowerCase()] || Sparkles;
               const connected = isConnected(toolkit.name);
 
               return (

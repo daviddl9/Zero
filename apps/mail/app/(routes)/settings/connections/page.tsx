@@ -95,8 +95,6 @@ export default function ConnectionsPage() {
     void refetchThreads();
   };
 
-  console.log(arcadeConnections);
-
   return (
     <div className="grid gap-6">
       <SettingsCard title="Email Connections" description="Connect your email accounts to Zero.">
