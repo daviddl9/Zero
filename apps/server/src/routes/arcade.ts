@@ -1,24 +1,12 @@
+import { mcpRegistry } from '../lib/mcp-providers';
 import type { HonoContext } from '../ctx';
 import { createAuth } from '../lib/auth';
-import Arcade from '@arcadeai/arcadejs';
 import { env } from '../env';
 import { Hono } from 'hono';
 
 export const arcadeRouter = new Hono<HonoContext>()
   .use('*', async (c, next) => {
-    // const { sessionUser } = c.var;
-    // c.set(
-    //   'customerData',
-    //   !sessionUser
-    //     ? null
-    //     : {
-    //         customerId: sessionUser.id,
-    //         customerData: {
-    //           name: sessionUser.name,
-    //           email: sessionUser.email,
-    //         },
-    //       },
-    // );
+    await mcpRegistry.initialize(env);
     await next();
   })
   .get('/verify-user', async (c) => {
@@ -40,51 +28,33 @@ export const arcadeRouter = new Hono<HonoContext>()
         return c.json({ error: 'Authentication required' }, 401);
       }
 
-      if (!env.ARCADE_API_KEY) {
-        console.error('[Arcade Verify User] ARCADE_API_KEY not configured');
+      const provider = mcpRegistry.getProvider('arcade');
+      if (!provider) {
+        console.error('[Arcade Verify User] Arcade provider not configured');
         return c.json({ error: 'Arcade integration not configured' }, 500);
       }
 
-      const arcade = new Arcade({ apiKey: env.ARCADE_API_KEY });
-
       try {
-        const result = await arcade.auth.confirmUser({
-          flow_id: flowId,
-          user_id: session.user.id,
-        });
+        const isValid = await provider.verifyAuth?.(session.user.id, flowId);
 
-        console.log('[Arcade Verify User] Successfully verified user', {
+        console.log('[Arcade Verify User] Auth verification result', {
           userId: session.user.id,
-          authId: result.auth_id,
-          user: result,
+          isValid,
         });
 
-        console.log('[Arcade Verify User] waiting for completion');
-
-        const authResponse = await arcade.auth.waitForCompletion(result.auth_id);
-
-        console.log('[Arcade Verify User] authResponse', authResponse);
-
-        if (authResponse.status === 'completed') {
-          // const { mutateAsync: createConnection } =
-          // trpc.arcadeConnections.createConnection.mutationOptions();
-
+        if (isValid) {
           const toolkit = c.req.query('toolkit');
-
           const params = new URLSearchParams();
           params.set('arcade_auth_success', 'true');
           if (toolkit) {
             params.set('toolkit', toolkit);
           }
-          params.set('auth_id', result.auth_id);
+          params.set('auth_id', `${session.user.id}-${flowId}`);
 
           const redirectUrl = `${env.VITE_PUBLIC_APP_URL}/settings/connections?${params.toString()}`;
           return c.redirect(redirectUrl);
         } else {
-          console.error('[Arcade Verify User] Authorization not completed', {
-            status: authResponse.status,
-          });
-
+          console.error('[Arcade Verify User] Authorization not completed');
           return c.redirect(
             `${env.VITE_PUBLIC_APP_URL}/settings/connections?error=arcade_auth_incomplete`,
           );

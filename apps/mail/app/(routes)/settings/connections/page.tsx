@@ -96,6 +96,8 @@ export default function ConnectionsPage() {
     void refetchThreads();
   };
 
+  console.log('arcadeConnections', arcadeConnections);
+
   return (
     <div className="grid gap-6">
       <SettingsCard title="Email Connections" description="Connect your email accounts to Zero.">
@@ -295,10 +297,10 @@ export default function ConnectionsPage() {
           ) : arcadeConnections.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
               {arcadeConnections.map((connection) => {
-                const Icon = toolkitIcons[connection.provider_id?.split('-')[0] || ''];
+                const Icon = toolkitIcons[connection?.provider_id?.split('-')[0] || ''] || Sparkles;
                 return (
                   <div
-                    key={connection.id}
+                    key={connection?.id ?? ''}
                     className="bg-popover flex items-center justify-between rounded-lg border p-4"
                   >
                     <div className="flex min-w-0 items-center gap-4">
@@ -308,7 +310,7 @@ export default function ConnectionsPage() {
                         </div>
                         <div className="flex flex-col gap-1">
                           <span className="truncate text-sm font-medium capitalize">
-                            {connection.provider_id?.split('-')[0]}
+                            {connection?.provider_id?.split('-')[0]}
                           </span>
                           <div className="flex items-center gap-2">
                             <Badge variant="default" className="bg-green-500 text-xs">
@@ -331,7 +333,7 @@ export default function ConnectionsPage() {
                       <DialogContent showOverlay>
                         <DialogHeader>
                           <DialogTitle>
-                            Disconnect {connection.provider_id?.split('-')[0]}
+                            Disconnect {connection?.provider_id?.split('-')[0]}
                           </DialogTitle>
                           <DialogDescription>
                             Are you sure you want to disconnect this integration?
@@ -346,7 +348,7 @@ export default function ConnectionsPage() {
                               onClick={async () => {
                                 try {
                                   await revokeAuthorization({
-                                    connectionId: connection.connection_id!,
+                                    connectionId: connection?.connection_id,
                                   });
                                   toast.success('Integration disconnected');
                                   void refetchArcadeConnections();
