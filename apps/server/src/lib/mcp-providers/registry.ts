@@ -7,7 +7,7 @@ export class MCPProviderRegistry {
   private connections = new Map<string, MCPConnection>();
   private initialized = false;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): MCPProviderRegistry {
     if (!MCPProviderRegistry.instance) {
@@ -24,12 +24,29 @@ export class MCPProviderRegistry {
   }
 
   private async registerDefaultProviders(env: unknown): Promise<void> {
-    const typedEnv = env as { ARCADE_API_KEY?: string };
+    const typedEnv = env as {
+      ARCADE_API_KEY?: string;
+      COMPOSIO_API_KEY?: string;
+      OPENAI_API_KEY?: string;
+    };
+
     if (typedEnv.ARCADE_API_KEY) {
       const { ArcadeProvider } = await import('./providers/arcade');
       const arcadeProvider = new ArcadeProvider();
       await arcadeProvider.init({ apiKey: typedEnv.ARCADE_API_KEY });
       this.register(arcadeProvider);
+    }
+
+    if (typedEnv.COMPOSIO_API_KEY) {
+      const { ComposioProvider } = await import('./providers/composio');
+      const composioProvider = new ComposioProvider();
+      await composioProvider.init({
+        apiKey: typedEnv.COMPOSIO_API_KEY,
+        options: {
+          openaiApiKey: typedEnv.OPENAI_API_KEY,
+        },
+      });
+      this.register(composioProvider);
     }
   }
 

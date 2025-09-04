@@ -8,9 +8,11 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { AddArcadeConnectionDialog } from '@/components/connection/add-arcade-connection';
+import { AddComposioConnectionDialog } from '@/components/connection/add-composio-connection';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toolkitIcons } from '@/components/connection/add-arcade-connection';
 import { useArcadeConnections } from '@/hooks/use-arcade-connection';
+import { useComposioConnections } from '@/hooks/use-composio-connection';
 import { SettingsCard } from '@/components/settings/settings-card';
 import { AddConnectionDialog } from '@/components/connection/add';
 import { Trash, Plus, Unplug, Sparkles } from 'lucide-react';
@@ -37,6 +39,12 @@ export default function ConnectionsPage() {
     refetch: refetchArcadeConnections,
     revokeAuthorization,
   } = useArcadeConnections();
+  const {
+    connections: composioConnections,
+    isLoading: composioLoading,
+    refetch: refetchComposioConnections,
+    revokeAuthorization: revokeComposioAuthorization,
+  } = useComposioConnections();
   const { refetch } = useSession();
   const [openTooltip, setOpenTooltip] = useState<string | null>(null);
 
@@ -44,6 +52,9 @@ export default function ConnectionsPage() {
   const { mutateAsync: deleteConnection } = useMutation(trpc.connections.delete.mutationOptions());
   const { mutateAsync: createArcadeConnection } = useMutation(
     trpc.arcadeConnections.createConnection.mutationOptions(),
+  );
+  const { mutateAsync: createComposioConnection } = useMutation(
+    trpc.composioConnections.createConnection.mutationOptions(),
   );
   const [{ refetch: refetchThreads }] = useThreads();
   const { isPro } = useBilling();
@@ -389,6 +400,128 @@ export default function ConnectionsPage() {
                 </span>
               </Button>
             </AddArcadeConnectionDialog>
+          </div>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Composio Integrations"
+        description="Connect to external services through Composio to enhance Zero Mail with AI-powered tools."
+      >
+        <div className="space-y-6">
+          {composioLoading ? (
+            <div className="grid gap-4 md:grid-cols-3">
+              {[...Array(3)].map((n) => (
+                <div
+                  key={n}
+                  className="bg-popover flex items-center justify-between rounded-lg border p-4"
+                >
+                  <div className="flex min-w-0 items-center gap-4">
+                    <Skeleton className="h-12 w-12 rounded-lg" />
+                    <div className="flex flex-col gap-1">
+                      <Skeleton className="h-4 w-full lg:w-32" />
+                      <Skeleton className="h-3 w-full lg:w-48" />
+                    </div>
+                  </div>
+                  <Skeleton className="ml-4 h-8 w-8 rounded-full" />
+                </div>
+              ))}
+            </div>
+          ) : composioConnections.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+              {composioConnections.map((connection) => {
+                const Icon = toolkitIcons[connection?.service || ''] || Sparkles;
+                return (
+                  <div
+                    key={connection?.id ?? ''}
+                    className="bg-popover flex items-center justify-between rounded-lg border p-4"
+                  >
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex min-w-0 flex-row gap-4">
+                        <div className="bg-primary/10 flex h-12 w-12 shrink-0 items-center justify-center rounded-lg">
+                          <Icon className="h-6 w-6" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="truncate text-sm font-medium capitalize">
+                            {connection?.service}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="default" className="bg-green-500 text-xs">
+                              Connected
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="ml-4 shrink-0 text-red-500 hover:text-red-600"
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent showOverlay>
+                        <DialogHeader>
+                          <DialogTitle>
+                            Disconnect {connection?.service}
+                          </DialogTitle>
+                          <DialogDescription>
+                            Are you sure you want to disconnect this integration?
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex justify-end gap-4">
+                          <DialogClose asChild>
+                            <Button variant="outline">Cancel</Button>
+                          </DialogClose>
+                          <DialogClose asChild>
+                            <Button
+                              onClick={async () => {
+                                try {
+                                  await revokeComposioAuthorization({
+                                    connectionId: connection?.id,
+                                  });
+                                  toast.success('Integration disconnected');
+                                  void refetchComposioConnections();
+                                } catch {
+                                  toast.error('Failed to disconnect integration');
+                                }
+                              }}
+                            >
+                              Disconnect
+                            </Button>
+                          </DialogClose>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-muted-foreground py-8 text-center">
+              <Sparkles className="mx-auto mb-4 h-12 w-12 opacity-50" />
+              <p className="text-sm">No integrations connected</p>
+              <p className="mt-1 text-xs">
+                Connect to external services to access powerful AI tools
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-start">
+            <AddComposioConnectionDialog onSuccess={() => void refetchComposioConnections()}>
+              <Button
+                variant="outline"
+                className="group relative w-10 overflow-hidden duration-200 hover:w-full sm:hover:w-[32.5%]"
+              >
+                <Plus className="absolute h-4 w-4 group-hover:hidden" />
+                <span className="whitespace-nowrap pl-7 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  Add Integration
+                </span>
+              </Button>
+            </AddComposioConnectionDialog>
           </div>
         </div>
       </SettingsCard>

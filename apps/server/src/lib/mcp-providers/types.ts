@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-export type MCPProviderType = 'arcade' | 'claude-desktop' | 'custom' | 'builtin';
+export type MCPProviderType = 'arcade' | 'composio' | 'claude-desktop' | 'custom' | 'builtin';
 
 export interface MCPProviderConfig {
   apiKey?: string;
@@ -52,17 +52,7 @@ export interface MCPAuthResponse {
   status?: 'pending' | 'completed' | 'error';
 }
 
-export interface MCPConnection {
-  id: string;
-  userId: string;
-  provider_id: string;
-  provider_type: MCPProviderType;
-  status: 'connected' | 'disconnected' | 'error';
-  metadata?: Record<string, unknown>;
-  created_at: Date;
-  updated_at: Date;
-  connection_id: string;
-}
+
 
 export interface MCPProvider {
   name: string;

@@ -212,11 +212,7 @@ export const navigationConfig: Record<string, NavConfig> = {
             url: '/settings/danger-zone',
             icon: Danger,
           },
-          {
-            title: 'Composio AI',
-            url: '/settings/composio',
-            icon: Danger,
-          },
+
         ].map((item) => ({
           ...item,
           isSettingsPage: true,

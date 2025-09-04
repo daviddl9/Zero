@@ -4,6 +4,7 @@ import { connectionsRouter } from './routes/connections';
 import { categoriesRouter } from './routes/categories';
 import { templatesRouter } from './routes/templates';
 import { arcadeConnections } from './routes/arcade';
+import { composioConnections } from './routes/composio-mcp';
 import { shortcutRouter } from './routes/shortcut';
 import { settingsRouter } from './routes/settings';
 import { getContext } from 'hono/context-storage';
@@ -16,7 +17,7 @@ import { userRouter } from './routes/user';
 import { meetRouter } from './routes/meet';
 import { mailRouter } from './routes/mail';
 import { bimiRouter } from './routes/bimi';
-import { composioRouter } from './routes/composio';
+
 import type { HonoContext } from '../ctx';
 import { aiRouter } from './routes/ai';
 import { router } from './trpc';
@@ -24,10 +25,11 @@ import { router } from './trpc';
 export const appRouter = router({
   ai: aiRouter,
   arcadeConnections: arcadeConnections,
+  composioConnections: composioConnections,
   bimi: bimiRouter,
   brain: brainRouter,
   categories: categoriesRouter,
-  composio: composioRouter,
+
   connections: connectionsRouter,
   cookiePreferences: cookiePreferencesRouter,
   drafts: draftsRouter,
