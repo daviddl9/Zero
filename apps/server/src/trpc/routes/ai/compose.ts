@@ -46,6 +46,66 @@ type ComposeEmailInput = {
   generateMultipleDrafts?: boolean;
 };
 
+// Schema for structured multi-draft output (hoisted to module level)
+const multiDraftSchema = z.object({
+  drafts: z.array(
+    z.object({
+      approach: z
+        .string()
+        .describe(
+          'Short label describing this response approach (e.g., "Accept invitation", "Decline politely")',
+        ),
+      subject: z
+        .string()
+        .describe(
+          'The email subject line for this approach. Do NOT include "Subject:" prefix, just the subject text.',
+        ),
+      body: z
+        .string()
+        .describe(
+          'The complete email body for this approach. Do NOT include the subject line in the body. Start directly with the greeting (e.g., "Hi," or "Hello,").',
+        ),
+    }),
+  ),
+});
+
+/**
+ * Build conversation messages for thread context.
+ * Shared between single and multi-draft composition.
+ */
+function buildThreadMessages(
+  threadMessages: ComposeEmailInput['threadMessages'] = [],
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const threadUserMessages = threadMessages.map((message) => ({
+    role: 'user' as const,
+    content: MessagePrompt({
+      ...message,
+      body: stripHtml(message.body).result,
+    }),
+  }));
+
+  return threadMessages.length > 0
+    ? [
+        {
+          role: 'user' as const,
+          content: "I'm going to give you the current email thread replies one by one.",
+        },
+        { role: 'assistant' as const, content: 'Got it. Please proceed with the thread replies.' },
+        ...threadUserMessages,
+        {
+          role: 'assistant' as const,
+          content: 'Got it. Please proceed with the email composition prompt.',
+        },
+      ]
+    : [
+        { role: 'user' as const, content: 'Now, I will give you the prompt to write the email.' },
+        {
+          role: 'assistant' as const,
+          content: 'Ok, please continue with the email composition prompt.',
+        },
+      ];
+}
+
 export async function composeEmail(input: ComposeEmailInput) {
   const { prompt, threadMessages = [], cc, emailSubject, to, username, connectionId } = input;
 
@@ -65,41 +125,7 @@ export async function composeEmail(input: ComposeEmailInput) {
     styleProfile: writingStyleMatrix?.style as WritingStyleMatrix,
   });
 
-  const threadUserMessages = threadMessages.map((message) => ({
-    role: 'user' as const,
-    content: MessagePrompt({
-      ...message,
-      body: stripHtml(message.body).result,
-    }),
-  }));
-
-  const messages =
-    threadMessages.length > 0
-      ? [
-          {
-            role: 'user' as const,
-            content: "I'm going to give you the current email thread replies one by one.",
-          } as const,
-          {
-            role: 'assistant' as const,
-            content: 'Got it. Please proceed with the thread replies.',
-          } as const,
-          ...threadUserMessages,
-          {
-            role: 'assistant' as const,
-            content: 'Got it. Please proceed with the email composition prompt.',
-          },
-        ]
-      : [
-          {
-            role: 'user' as const,
-            content: 'Now, I will give you the prompt to write the email.',
-          },
-          {
-            role: 'assistant' as const,
-            content: 'Ok, please continue with the email composition prompt.',
-          },
-        ];
+  const messages = buildThreadMessages(threadMessages);
 
   const { text } = await generateText({
     model: openai(env.OPENAI_MINI_MODEL || 'gpt-4o-mini'),
@@ -170,64 +196,7 @@ export async function composeEmailWithMultipleDrafts(
     styleProfile: writingStyleMatrix?.style as WritingStyleMatrix,
   });
 
-  const threadUserMessages = threadMessages.map((message) => ({
-    role: 'user' as const,
-    content: MessagePrompt({
-      ...message,
-      body: stripHtml(message.body).result,
-    }),
-  }));
-
-  const messages =
-    threadMessages.length > 0
-      ? [
-          {
-            role: 'user' as const,
-            content: "I'm going to give you the current email thread replies one by one.",
-          } as const,
-          {
-            role: 'assistant' as const,
-            content: 'Got it. Please proceed with the thread replies.',
-          } as const,
-          ...threadUserMessages,
-          {
-            role: 'assistant' as const,
-            content: 'Got it. Please proceed with the email composition prompt.',
-          },
-        ]
-      : [
-          {
-            role: 'user' as const,
-            content: 'Now, I will give you the prompt to write the email.',
-          },
-          {
-            role: 'assistant' as const,
-            content: 'Ok, please continue with the email composition prompt.',
-          },
-        ];
-
-  // Schema for structured multi-draft output
-  const multiDraftSchema = z.object({
-    drafts: z.array(
-      z.object({
-        approach: z
-          .string()
-          .describe(
-            'Short label describing this response approach (e.g., "Accept invitation", "Decline politely")',
-          ),
-        subject: z
-          .string()
-          .describe(
-            'The email subject line for this approach. Do NOT include "Subject:" prefix, just the subject text.',
-          ),
-        body: z
-          .string()
-          .describe(
-            'The complete email body for this approach. Do NOT include the subject line in the body. Start directly with the greeting (e.g., "Hi," or "Hello,").',
-          ),
-      }),
-    ),
-  });
+  const messages = buildThreadMessages(threadMessages);
 
   try {
     const { object } = await generateObject({

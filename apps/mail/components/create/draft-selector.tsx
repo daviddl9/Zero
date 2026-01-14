@@ -2,6 +2,8 @@ import { TextEffect } from '@/components/motion-primitives/text-effect';
 import { AnimatePresence, motion } from 'motion/react';
 import { Check, X as XIcon } from 'lucide-react';
 
+// Note: This type mirrors the server's Draft type from compose.ts
+// We define it here to avoid cross-package imports and keep the component self-contained
 export interface Draft {
   id: string;
   body: string;
