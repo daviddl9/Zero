@@ -479,6 +479,179 @@ export const webSearch = () =>
     },
   });
 
+/**
+ * Search past emails with specific recipients to understand communication style and relationship.
+ * Returns both sent and received emails to understand the full conversation context.
+ */
+export const searchEmails = (connectionId: string) =>
+  tool({
+    description:
+      'Search past emails exchanged with specific recipients to understand your communication style and relationship with them. Use this to discern formality level, tone, typical greetings/sign-offs, and relationship context.',
+    parameters: z.object({
+      recipientEmails: z.array(z.string()).describe('Email addresses to find conversations with'),
+      maxResults: z.number().optional().default(10).describe('Maximum number of emails to return'),
+      sentOnly: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('If true, only return emails sent BY the user'),
+    }),
+    execute: async ({ recipientEmails, maxResults = 10, sentOnly = false }) => {
+      try {
+        const { stub: agent } = await getZeroAgent(connectionId);
+
+        // Build search query for conversations with these recipients
+        const recipientQueries = recipientEmails.map((email) => {
+          if (sentOnly) {
+            return `from:me to:${email}`;
+          }
+          return `(from:me to:${email}) OR (from:${email} to:me)`;
+        });
+        const query = recipientQueries.join(' OR ');
+
+        // Search for matching threads
+        const searchResult = await agent.searchThreads({
+          query,
+          maxResults: maxResults * 2, // Get more threads since we'll filter
+          folder: 'all mail',
+        });
+
+        if (!searchResult.threadIds.length) {
+          return [];
+        }
+
+        // Fetch thread details for each result
+        const emails: Array<{
+          subject: string;
+          body: string;
+          date: string;
+          to: string[];
+          from: string;
+          direction: 'sent' | 'received';
+        }> = [];
+
+        for (const threadId of searchResult.threadIds.slice(0, maxResults)) {
+          try {
+            const { result: thread } = await getThread(connectionId, threadId);
+            if (thread?.messages) {
+              for (const message of thread.messages) {
+                const isSent =
+                  message.sender.email &&
+                  !recipientEmails.some(
+                    (r) => r.toLowerCase() === message.sender.email.toLowerCase(),
+                  );
+
+                if (sentOnly && !isSent) continue;
+
+                emails.push({
+                  subject: message.subject || '',
+                  body: message.decodedBody?.slice(0, 1000) || '', // Limit body length
+                  date: message.receivedOn || '',
+                  to: message.to?.map((t) => t.email) || [],
+                  from: message.sender.email || '',
+                  direction: isSent ? 'sent' : 'received',
+                });
+
+                if (emails.length >= maxResults) break;
+              }
+            }
+          } catch (error) {
+            console.error(`[searchEmails] Error fetching thread ${threadId}:`, error);
+          }
+          if (emails.length >= maxResults) break;
+        }
+
+        return emails;
+      } catch (error) {
+        console.error('[searchEmails] Error:', error);
+        return [];
+      }
+    },
+  });
+
+/**
+ * Search past emails by keyword to find similar topics, situations, or requests.
+ * Useful for understanding how the user has responded to similar situations before.
+ */
+export const searchSimilarEmails = (connectionId: string) =>
+  tool({
+    description:
+      'Search past emails by keyword to find similar topics, situations, or requests. Use this to understand how the user has responded to similar situations before.',
+    parameters: z.object({
+      keywords: z.array(z.string()).describe('Keywords to search for similar emails/topics'),
+      maxResults: z.number().optional().default(5).describe('Maximum number of emails to return'),
+      sentOnly: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Only return emails sent BY the user (for style matching)'),
+    }),
+    execute: async ({ keywords, maxResults = 5, sentOnly = true }) => {
+      try {
+        const { stub: agent } = await getZeroAgent(connectionId);
+
+        // Build search query from keywords
+        const keywordQuery = keywords.join(' OR ');
+        const query = sentOnly ? `from:me (${keywordQuery})` : keywordQuery;
+
+        // Search for matching threads
+        const searchResult = await agent.searchThreads({
+          query,
+          maxResults: maxResults * 2,
+          folder: 'all mail',
+        });
+
+        if (!searchResult.threadIds.length) {
+          return [];
+        }
+
+        // Fetch thread details for each result
+        const emails: Array<{
+          subject: string;
+          body: string;
+          date: string;
+          to: string[];
+          from: string;
+        }> = [];
+
+        for (const threadId of searchResult.threadIds.slice(0, maxResults)) {
+          try {
+            const { result: thread } = await getThread(connectionId, threadId);
+            if (thread?.messages) {
+              for (const message of thread.messages) {
+                // If sentOnly, filter to only user's sent messages by checking tags
+                if (sentOnly) {
+                  const isSent = message.tags?.some(
+                    (tag) => tag.id === 'SENT' || tag.name?.toUpperCase() === 'SENT',
+                  );
+                  if (!isSent) continue;
+                }
+
+                emails.push({
+                  subject: message.subject || '',
+                  body: message.decodedBody?.slice(0, 1000) || '', // Limit body length
+                  date: message.receivedOn || '',
+                  to: message.to?.map((t) => t.email) || [],
+                  from: message.sender.email || '',
+                });
+
+                if (emails.length >= maxResults) break;
+              }
+            }
+          } catch (error) {
+            console.error(`[searchSimilarEmails] Error fetching thread ${threadId}:`, error);
+          }
+          if (emails.length >= maxResults) break;
+        }
+
+        return emails;
+      } catch (error) {
+        console.error('[searchSimilarEmails] Error:', error);
+        return [];
+      }
+    },
+  });
+
 export const tools = async (connectionId: string, ragEffect: boolean = false) => {
   const _tools = {
     [Tools.GetThread]: getEmail(),
@@ -496,6 +669,8 @@ export const tools = async (connectionId: string, ragEffect: boolean = false) =>
     [Tools.BuildGmailSearchQuery]: buildGmailSearchQuery(),
     [Tools.GetCurrentDate]: getCurrentDate(),
     [Tools.WebSearch]: webSearch(),
+    [Tools.SearchEmails]: searchEmails(connectionId),
+    [Tools.SearchSimilarEmails]: searchSimilarEmails(connectionId),
     [Tools.InboxRag]: tool({
       description:
         'Search the inbox for emails using natural language. Returns only an array of threadIds.',
