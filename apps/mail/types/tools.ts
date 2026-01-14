@@ -17,4 +17,5 @@ export enum Tools {
   AskZeroThread = 'askZeroThread',
   WebSearch = 'webSearch',
   InboxRag = 'inboxRag',
+  SequentialThinking = 'sequentialthinking',
 }

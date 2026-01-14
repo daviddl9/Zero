@@ -8,7 +8,9 @@ import useSearchLabels from '@/hooks/use-labels-search';
 import { useQueryClient } from '@tanstack/react-query';
 import { AIChat } from '@/components/create/ai-chat';
 import { useTRPC } from '@/providers/query-provider';
+import { X, Expand, Plus, Bug } from 'lucide-react';
 import { Tools } from '../../../server/src/types';
+import { useDevMode } from '@/hooks/use-dev-mode';
 import { useDoState } from '../mail/use-do-state';
 import { useBilling } from '@/hooks/use-billing';
 import { PromptsDialog } from './prompts-dialog';
@@ -16,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useLabels } from '@/hooks/use-labels';
 import { useAgentChat } from 'agents/ai-react';
-import { X, Expand, Plus } from 'lucide-react';
 import { IncomingMessageType } from '../party';
 import { useParams } from 'react-router';
 import { useAgent } from 'agents/react';
@@ -32,6 +33,9 @@ interface ChatHeaderProps {
   isFullScreen: boolean;
   isPopup: boolean;
   onNewChat: () => void;
+  showDevTools?: boolean;
+  onToggleDevTools?: () => void;
+  isDevMode?: boolean;
 }
 
 function ChatHeader({
@@ -41,6 +45,9 @@ function ChatHeader({
   isFullScreen,
   isPopup,
   onNewChat,
+  showDevTools,
+  onToggleDevTools,
+  isDevMode,
 }: ChatHeaderProps) {
   return (
     <div className="relative flex items-center justify-between px-2.5 pb-[10px] pt-[13px]">
@@ -111,6 +118,34 @@ function ChatHeader({
               </Tooltip>
             </TooltipProvider>
           </>
+        )}
+
+        {isDevMode && onToggleDevTools && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={onToggleDevTools}
+                  variant="ghost"
+                  className={cn(
+                    'md:h-fit md:px-2',
+                    showDevTools && 'bg-purple-100 dark:bg-purple-900/30',
+                  )}
+                >
+                  <Bug
+                    className={cn(
+                      'h-4 w-4',
+                      showDevTools
+                        ? 'text-purple-600 dark:text-purple-400'
+                        : 'dark:text-iconDark text-iconLight',
+                    )}
+                  />
+                  <span className="sr-only">Toggle dev tools</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{showDevTools ? 'Hide' : 'Show'} dev tools</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
 
         <PromptsDialog />
@@ -307,6 +342,25 @@ function AISidebar({ className }: AISidebarProps) {
   const { data: activeConnection } = useActiveConnection();
   const [, setDoState] = useDoState();
   const { labels } = useSearchLabels();
+  const isDevMode = useDevMode();
+
+  // Dev tools visibility state persisted to localStorage
+  const [showDevTools, setShowDevTools] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ai-dev-tools') === 'true';
+    }
+    return false;
+  });
+
+  const toggleDevTools = useCallback(() => {
+    setShowDevTools((prev) => {
+      const newValue = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('ai-dev-tools', String(newValue));
+      }
+      return newValue;
+    });
+  }, []);
 
   const onMessage = useCallback(
     (message: any) => {
@@ -457,9 +511,12 @@ function AISidebar({ className }: AISidebarProps) {
                       isFullScreen={isFullScreen}
                       isPopup={isPopup}
                       onNewChat={handleNewChat}
+                      showDevTools={showDevTools}
+                      onToggleDevTools={toggleDevTools}
+                      isDevMode={isDevMode}
                     />
                     <div className="relative flex-1 overflow-hidden">
-                      <AIChat {...chatState} />
+                      <AIChat {...chatState} showDevTools={showDevTools} />
                     </div>
                   </div>
                 </div>
@@ -502,9 +559,12 @@ function AISidebar({ className }: AISidebarProps) {
                   isFullScreen={isFullScreen}
                   isPopup={isPopup}
                   onNewChat={handleNewChat}
+                  showDevTools={showDevTools}
+                  onToggleDevTools={toggleDevTools}
+                  isDevMode={isDevMode}
                 />
                 <div className="relative flex-1 overflow-hidden">
-                  <AIChat {...chatState} />
+                  <AIChat {...chatState} showDevTools={showDevTools} />
                 </div>
               </div>
             </div>

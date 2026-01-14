@@ -1,3 +1,5 @@
+import { ToolCallVisualization, type ToolCallData } from './tool-call-visualization';
+import { ThinkingVisualization, type ThoughtData } from './thinking-visualization';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { useAIFullScreen, useAISidebar } from '../ui/ai-sidebar';
 import { VoiceProvider } from '@/providers/voice-provider';
@@ -5,6 +7,7 @@ import useComposeEditor from '@/hooks/use-compose-editor';
 import { useRef, useCallback, useEffect } from 'react';
 import type { useAgentChat } from 'agents/ai-react';
 import { Markdown } from '@react-email/components';
+import { useDevMode } from '@/hooks/use-dev-mode';
 import { TextShimmer } from '../ui/text-shimmer';
 import { useThread } from '@/hooks/use-threads';
 import { MailLabels } from '../mail/mail-list';
@@ -142,6 +145,7 @@ export interface AIChatProps {
   className?: string;
   onModelChange?: (model: string) => void;
   setMessages: (messages: AiMessage[]) => void;
+  showDevTools?: boolean;
 }
 
 // Subcomponents for ToolResponse
@@ -199,12 +203,17 @@ export function AIChat({
   error,
   handleSubmit,
   status,
-}: ReturnType<typeof useAgentChat>): React.ReactElement {
+  showDevTools,
+}: ReturnType<typeof useAgentChat> & { showDevTools?: boolean }): React.ReactElement {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const { isFullScreen } = useAIFullScreen();
   const [aiSidebarOpen] = useQueryState('aiSidebar');
   const { toggleOpen } = useAISidebar();
+  const isDevMode = useDevMode();
+
+  // Show dev visualizations only when in dev mode AND toggle is enabled
+  const shouldShowDevTools = isDevMode && showDevTools;
 
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
@@ -278,17 +287,63 @@ export function AIChat({
               const textParts = message.parts.filter((part) => part.type === 'text');
               const toolParts = message.parts.filter((part) => part.type === 'tool-invocation');
 
+              // Separate thinking tool invocations from other tools
+              const thinkingParts = toolParts.filter(
+                (part) => part.toolInvocation?.toolName === Tools.SequentialThinking,
+              );
+              const otherToolParts = toolParts.filter(
+                (part) => part.toolInvocation?.toolName !== Tools.SequentialThinking,
+              );
+
+              // Parse thinking data from tool results
+              const thoughts: ThoughtData[] = thinkingParts
+                .filter((part) => part.toolInvocation?.result)
+                .map((part) => {
+                  try {
+                    const result = part.toolInvocation?.result;
+                    if (typeof result === 'string') {
+                      return JSON.parse(result);
+                    }
+                    return result;
+                  } catch {
+                    return null;
+                  }
+                })
+                .filter((t): t is ThoughtData => t !== null && typeof t.thought === 'string');
+
+              // Parse tool call data for visualization
+              const toolCallsData: ToolCallData[] = otherToolParts.map((part) => ({
+                toolName: part.toolInvocation?.toolName || 'unknown',
+                args: part.toolInvocation?.args as Record<string, unknown>,
+                result: part.toolInvocation?.result,
+                state: part.toolInvocation?.result ? 'result' : 'pending',
+              }));
+
               return (
                 <div
                   key={`${message.id}-${index}`}
                   className="mb-2 flex flex-col"
                   data-message-role={message.role}
                 >
-                  {toolParts.map(
-                    (part, index) =>
+                  {/* Dev mode: Show thinking visualization */}
+                  {shouldShowDevTools && thoughts.length > 0 && (
+                    <ThinkingVisualization
+                      thoughts={thoughts}
+                      isStreaming={status === 'streaming'}
+                    />
+                  )}
+
+                  {/* Dev mode: Show tool calls visualization */}
+                  {shouldShowDevTools && toolCallsData.length > 0 && (
+                    <ToolCallVisualization toolCalls={toolCallsData} />
+                  )}
+
+                  {/* Regular tool responses (non-dev mode or specific visualizations) */}
+                  {otherToolParts.map(
+                    (part, idx) =>
                       part.toolInvocation?.result && (
                         <ToolResponse
-                          key={`${part.toolInvocation.toolName}-${index}`}
+                          key={`${part.toolInvocation.toolName}-${idx}`}
                           toolName={part.toolInvocation.toolName}
                           result={part.toolInvocation.result}
                           args={part.toolInvocation.args}
