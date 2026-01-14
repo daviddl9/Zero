@@ -97,6 +97,10 @@ const categoriesSchema = z.array(mailCategorySchema).superRefine((cats, ctx) => 
   }
 });
 
+// AI Provider enum
+export const aiProviderSchema = z.enum(['openai', 'gemini']);
+export type AIProvider = z.infer<typeof aiProviderSchema>;
+
 export const userSettingsSchema = z.object({
   language: z.string(),
   timezone: z.string(),
@@ -113,6 +117,12 @@ export const userSettingsSchema = z.object({
   imageCompression: z.enum(['low', 'medium', 'original']).default('medium'),
   autoRead: z.boolean().default(true),
   animations: z.boolean().default(false),
+  // AI Model settings
+  aiProvider: aiProviderSchema.nullable().default(null),
+  hasOpenaiKey: z.boolean().default(false),
+  hasGeminiKey: z.boolean().default(false),
+  defaultModel: z.string().nullable().default(null),
+  summarizationModel: z.string().nullable().default(null),
 });
 
 export type UserSettings = z.infer<typeof userSettingsSchema>;
@@ -133,4 +143,10 @@ export const defaultUserSettings: UserSettings = {
   undoSendEnabled: false,
   imageCompression: 'medium',
   animations: false,
+  // AI Model settings defaults
+  aiProvider: null,
+  hasOpenaiKey: false,
+  hasGeminiKey: false,
+  defaultModel: null,
+  summarizationModel: null,
 };

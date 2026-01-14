@@ -147,6 +147,10 @@ export class DbRpcDO extends RpcTarget {
     return await this.mainDo.updateUserSettings(this.userId, settings);
   }
 
+  async updateEncryptedApiKey(provider: 'openai' | 'gemini', encryptedKey: string | null) {
+    return await this.mainDo.updateEncryptedApiKey(this.userId, provider, encryptedKey);
+  }
+
   async createConnection(
     providerId: EProviders,
     email: string,
@@ -411,6 +415,23 @@ class ZeroDB extends DurableObject<ZeroEnv> {
       });
   }
 
+  async updateEncryptedApiKey(
+    userId: string,
+    provider: 'openai' | 'gemini',
+    encryptedKey: string | null,
+  ) {
+    const column =
+      provider === 'openai' ? userSettings.encryptedOpenaiKey : userSettings.encryptedGeminiKey;
+
+    return await this.db
+      .update(userSettings)
+      .set({
+        [column.name]: encryptedKey,
+        updatedAt: new Date(),
+      })
+      .where(eq(userSettings.userId, userId));
+  }
+
   async createConnection(
     providerId: EProviders,
     email: string,
@@ -576,7 +597,7 @@ function hashIpAddress(ip: string | undefined): string | undefined {
 
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
 
@@ -610,13 +631,18 @@ const api = new Hono<HonoContext>()
     });
 
     // Start authentication span
-    const authSpan = TraceContext.startSpan(traceId, 'authentication', {
-      method: c.req.method,
-      url: c.req.url,
-      hasAuthHeader: !!c.req.header('Authorization'),
-    }, {
-      'auth.method': c.req.header('Authorization') ? 'bearer_token' : 'session_cookie'
-    });
+    const authSpan = TraceContext.startSpan(
+      traceId,
+      'authentication',
+      {
+        method: c.req.method,
+        url: c.req.url,
+        hasAuthHeader: !!c.req.header('Authorization'),
+      },
+      {
+        'auth.method': c.req.header('Authorization') ? 'bearer_token' : 'session_cookie',
+      },
+    );
 
     const auth = createAuth();
     c.set('auth', auth);
@@ -625,11 +651,16 @@ const api = new Hono<HonoContext>()
 
     if (c.req.header('Authorization') && !session?.user) {
       // Start token verification span
-      const tokenSpan = TraceContext.startSpan(traceId, 'token_verification', {
-        tokenPresent: true,
-      }, {
-        'auth.token_type': 'jwt'
-      });
+      const tokenSpan = TraceContext.startSpan(
+        traceId,
+        'token_verification',
+        {
+          tokenPresent: true,
+        },
+        {
+          'auth.token_type': 'jwt',
+        },
+      );
 
       const token = c.req.header('Authorization')?.split(' ')[1];
 
@@ -657,10 +688,15 @@ const api = new Hono<HonoContext>()
             });
           }
         } catch (error) {
-          TraceContext.completeSpan(traceId, tokenSpan.id, {
-            success: false,
-            reason: 'token_verification_failed',
-          }, error instanceof Error ? error.message : 'Unknown token error');
+          TraceContext.completeSpan(
+            traceId,
+            tokenSpan.id,
+            {
+              success: false,
+              reason: 'token_verification_failed',
+            },
+            error instanceof Error ? error.message : 'Unknown token error',
+          );
         }
       } else {
         TraceContext.completeSpan(traceId, tokenSpan.id, {
@@ -674,7 +710,7 @@ const api = new Hono<HonoContext>()
     TraceContext.completeSpan(traceId, authSpan.id, {
       authenticated: !!c.var.sessionUser,
       userId: c.var.sessionUser?.id,
-      authMethod: session?.user ? 'session' : (c.req.header('Authorization') ? 'token' : 'none'),
+      authMethod: session?.user ? 'session' : c.req.header('Authorization') ? 'token' : 'none',
     });
 
     // Update trace metadata with user info
@@ -691,11 +727,16 @@ const api = new Hono<HonoContext>()
       await next();
       // Don't complete the request span here - let TRPC middleware handle it
     } catch (error) {
-      TraceContext.completeSpan(traceId, requestSpan.id, {
-        success: false,
+      TraceContext.completeSpan(
+        traceId,
+        requestSpan.id,
+        {
+          success: false,
 
-        statusCode: c.res.status,
-      }, error instanceof Error ? error.message : 'Unknown request error');
+          statusCode: c.res.status,
+        },
+        error instanceof Error ? error.message : 'Unknown request error',
+      );
       throw error;
     }
     // Note: Trace will be completed by TRPC middleware after logging

@@ -102,6 +102,8 @@ export type ZeroEnv = {
   DD_API_KEY: string;
   DD_APP_KEY: string;
   DD_SITE: string;
+  // Encryption master key for user API keys (AES-256-GCM)
+  ENCRYPTION_MASTER_KEY?: string;
 };
 
 const env = _env as ZeroEnv;

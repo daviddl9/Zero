@@ -198,6 +198,9 @@ export const userSettings = createTable(
       .$type<typeof defaultUserSettings>()
       .notNull()
       .default(defaultUserSettings),
+    // Encrypted API keys stored separately from settings JSONB for security
+    encryptedOpenaiKey: text('encrypted_openai_key'),
+    encryptedGeminiKey: text('encrypted_gemini_key'),
     createdAt: timestamp('created_at').notNull(),
     updatedAt: timestamp('updated_at').notNull(),
   },
