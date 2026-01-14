@@ -30,7 +30,7 @@ class MockExecutionContext implements ExecutionContext {
       console.error('MockExecutionContext: Error in waitUntil', error);
     }
   }
-  passThroughOnException(): void { }
+  passThroughOnException(): void {}
   props: any;
 }
 
@@ -286,15 +286,15 @@ export const getThread: (
   connectionId: string,
   threadId: string,
 ) => {
-    const result = await Effect.runPromise(getThreadEffect(connectionId, threadId));
-    if (!result.result) {
-      throw new Error(`Thread ${threadId} not found`);
-    }
-    if (!result.shardId) {
-      throw new Error(`Thread ${threadId} not found in any shard`);
-    }
-    return { result: result.result, shardId: result.shardId };
-  };
+  const result = await Effect.runPromise(getThreadEffect(connectionId, threadId));
+  if (!result.result) {
+    throw new Error(`Thread ${threadId} not found`);
+  }
+  if (!result.shardId) {
+    throw new Error(`Thread ${threadId} not found in any shard`);
+  }
+  return { result: result.result, shardId: result.shardId };
+};
 
 export const modifyThreadLabelsInDB = async (
   connectionId: string,
@@ -408,14 +408,30 @@ export const getThreadsFromDB = async (
 
   const maxResults = params.maxResults ?? defaultPageSize;
 
-  if (maxResults === defaultPageSize && !params.pageToken && !params.q) {
-    return Effect.promise(async () => {
+  console.log('[getThreadsFromDB] params:', {
+    folder: params.folder,
+    maxResults,
+    pageToken: params.pageToken ? `"${params.pageToken.substring(0, 30)}..."` : null,
+    q: params.q,
+  });
+
+  // Use fast path for simple queries without search
+  // This covers both first page and subsequent pages
+  if (maxResults === defaultPageSize && !params.q) {
+    const result = await Effect.promise(async () => {
       const agent = await getZeroAgent(connectionId);
       return await agent.stub.getThreadsFromDB({
         ...params,
         maxResults: maxResults,
       });
     }).pipe(Effect.runPromise);
+
+    console.log('[getThreadsFromDB] fast path result:', {
+      threadCount: result.threads.length,
+      nextPageToken: result.nextPageToken ? `"${String(result.nextPageToken).substring(0, 30)}..."` : null,
+    });
+
+    return result;
   }
 
   return Effect.runPromise(
@@ -603,8 +619,6 @@ export const verifyToken = async (token: string) => {
   const data = (await response.json()) as any;
   return !!data;
 };
-
-
 
 export const resetConnection = async (connectionId: string) => {
   const { db, conn } = createDb(env.HYPERDRIVE.connectionString);

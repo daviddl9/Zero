@@ -190,7 +190,12 @@ export const mailRouter = router({
         }
       }
 
-      console.debug('[listThreads] Returning threadsResponse:', threadsResponse);
+      console.log('[listThreads] Returning:', {
+        threadCount: threadsResponse.threads.length,
+        nextPageToken: threadsResponse.nextPageToken ? `"${String(threadsResponse.nextPageToken).substring(0, 30)}..."` : null,
+        folder,
+        cursor: cursor ? `"${cursor.substring(0, 30)}..."` : null,
+      });
       return threadsResponse;
     }),
   markAsRead: activeDriverProcedure

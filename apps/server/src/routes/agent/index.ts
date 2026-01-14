@@ -729,7 +729,10 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
       console.log(
         `[syncFolders] Starting folder sync for ${this.name} (threadCount: ${threadCount})`,
       );
+      // Sync inbox first for immediate feedback, then other folders
       await this.triggerSyncWorkflow('inbox');
+      await this.triggerSyncWorkflow('sent');
+      await this.triggerSyncWorkflow('archive');
     } else {
       console.log(
         `[syncFolders] Skipping sync for ${this.name} - threadCount (${threadCount}) >= maxCount (${maxCount})`,
@@ -1310,9 +1313,17 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
       maxResults,
     };
 
+    console.log('[ZeroDriver.getThreadsFromDB] params:', {
+      folder: normalizedParams.folder,
+      maxResults,
+      pageToken: params.pageToken ? `"${params.pageToken.substring(0, 30)}..."` : null,
+    });
+
     const program = pipe(
       this.queryThreads(normalizedParams),
       Effect.map((result) => {
+        console.log('[ZeroDriver.getThreadsFromDB] queryThreads returned:', result?.length ?? 0, 'items');
+
         if (result?.length) {
           const threads = result.map((row) => ({
             id: String(row.id),
@@ -1324,6 +1335,13 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
             threads.length === maxResults && result.length > 0
               ? String(result[result.length - 1].latest_received_on)
               : null;
+
+          console.log('[ZeroDriver.getThreadsFromDB] returning:', {
+            threadCount: threads.length,
+            maxResults,
+            hasNextPage: threads.length === maxResults,
+            nextPageToken: nextPageToken ? `"${nextPageToken.substring(0, 30)}..."` : null,
+          });
 
           return {
             threads,
@@ -1663,6 +1681,13 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
   }
 
   private async triggerSyncWorkflow(folder: string): Promise<void> {
+    // Use direct sync when workflows are disabled (local development)
+    if (this.env.DISABLE_WORKFLOWS === 'true') {
+      console.log(`[ZeroDriver] Workflows disabled, using direct sync for ${this.name}/${folder}`);
+      await this.directSync(folder);
+      return;
+    }
+
     try {
       console.log(`[ZeroDriver] Triggering sync coordinator workflow for ${this.name}/${folder}`);
 
@@ -1681,18 +1706,82 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
         `[ZeroDriver] Failed to trigger sync coordinator workflow for ${this.name}/${folder}:`,
         error,
       );
-      //   try {
-      //     const fallbackInstance = await this.env.SYNC_THREADS_WORKFLOW.create({
-      //       id: `${this.name}-${folder}`,
-      //       params: {
-      //         connectionId: this.name,
-      //         folder: folder,
-      //       },
-      //     });
-      //     console.log(`[ZeroDriver] Fallback to original workflow: ${fallbackInstance.id}`);
-      //   } catch (fallbackError) {
-      //     console.error(`[ZeroDriver] Fallback workflow also failed:`, fallbackError);
-      //   }
+      // Fallback to direct sync if workflow fails
+      console.log(`[ZeroDriver] Falling back to direct sync for ${this.name}/${folder}`);
+      await this.directSync(folder);
+    }
+  }
+
+  private async directSync(folder: string): Promise<void> {
+    if (!this.driver || !this.connection) {
+      console.warn(`[ZeroDriver] No driver available for direct sync - folder ${folder}`);
+      return;
+    }
+
+    try {
+      const maxCount = parseInt(this.env.THREAD_SYNC_MAX_COUNT || '20');
+      console.log(
+        `[ZeroDriver] Direct sync starting for ${folder}, maxCount per page: ${maxCount}`,
+      );
+
+      let pageToken: string | undefined;
+      let totalSynced = 0;
+      let pageNumber = 0;
+
+      do {
+        pageNumber++;
+        const syncedBefore = totalSynced;
+
+        const { threads, nextPageToken } = await this.driver.list({
+          folder,
+          maxResults: maxCount,
+          pageToken,
+        });
+
+        console.log(`[ZeroDriver] Page ${pageNumber}: Found ${threads.length} threads to sync`);
+
+        for (const thread of threads) {
+          try {
+            const latest = await this.env.THREAD_SYNC_WORKER.get(
+              this.env.THREAD_SYNC_WORKER.newUniqueId(),
+            ).syncThread(this.connection, thread.id);
+
+            if (latest) {
+              await this.storeThreadInDB(
+                {
+                  id: thread.id,
+                  threadId: thread.id,
+                  providerId: 'google',
+                  latestSender: latest.sender,
+                  latestReceivedOn: new Date(latest.receivedOn).toISOString(),
+                  latestSubject: latest.subject,
+                },
+                latest.tags.map((tag: { id: string }) => tag.id),
+              );
+              totalSynced++;
+            }
+          } catch (threadError) {
+            console.error(`[ZeroDriver] Failed to sync thread ${thread.id}:`, threadError);
+          }
+        }
+
+        const pageSynced = totalSynced - syncedBefore;
+        console.log(
+          `[ZeroDriver] Page ${pageNumber} complete: ${pageSynced}/${threads.length} synced (total: ${totalSynced})`,
+        );
+        console.log(
+          `[ZeroDriver] nextPageToken: ${nextPageToken ? `"${nextPageToken.substring(0, 20)}..."` : 'null/undefined'}`,
+        );
+
+        await this.reloadFolder(folder);
+        pageToken = nextPageToken ?? undefined;
+      } while (pageToken);
+
+      console.log(
+        `[ZeroDriver] Direct sync completed: ${totalSynced} threads synced across ${pageNumber} pages`,
+      );
+    } catch (error) {
+      console.error(`[ZeroDriver] Direct sync failed for ${folder}:`, error);
     }
   }
 }

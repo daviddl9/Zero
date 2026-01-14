@@ -1,6 +1,6 @@
-import { env } from '../env';
 import { Redis } from '@upstash/redis';
 import { Resend } from 'resend';
+import { env } from '../env';
 
 export const resend = () =>
   env.RESEND_API_KEY
@@ -10,17 +10,14 @@ export const resend = () =>
 export const redis = () => new Redis({ url: env.REDIS_URL, token: env.REDIS_TOKEN });
 
 export const twilio = () => {
-  //   if (env.NODE_ENV === 'development' && !forceUseRealService) {
-  //     return {
-  //       messages: {
-  //         send: async (to: string, body: string) =>
-  //           console.log(`[TWILIO:MOCK] Sending message to ${to}: ${body}`),
-  //       },
-  //     };
-  //   }
-
   if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
-    throw new Error('Twilio is not configured correctly');
+    console.log('[TWILIO] Not configured - using mock (phone verification will not work)');
+    return {
+      messages: {
+        send: async (to: string, body: string) =>
+          console.log(`[TWILIO:MOCK] Would send to ${to}: ${body}`),
+      },
+    };
   }
 
   const send = async (to: string, body: string) => {
