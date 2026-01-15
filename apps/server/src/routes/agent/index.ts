@@ -57,7 +57,7 @@ import { ToolOrchestrator } from './orchestrator';
 import { eq, desc, isNotNull } from 'drizzle-orm';
 import migrations from './db/drizzle/migrations';
 import { getPromptName } from '../../pipelines';
-import { anthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { connection } from '../../db/schema';
 import type { WSMessage } from 'partyserver';
 import { tools as authTools } from './tools';
@@ -68,7 +68,6 @@ import { openai } from '@ai-sdk/openai';
 import * as schema from './db/schema';
 import { threads } from './db/schema';
 import { Effect, pipe } from 'effect';
-import { groq } from '@ai-sdk/groq';
 import { createDb } from '../../db';
 import type { Message } from 'ai';
 import { create } from './db';
@@ -1322,7 +1321,11 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     const program = pipe(
       this.queryThreads(normalizedParams),
       Effect.map((result) => {
-        console.log('[ZeroDriver.getThreadsFromDB] queryThreads returned:', result?.length ?? 0, 'items');
+        console.log(
+          '[ZeroDriver.getThreadsFromDB] queryThreads returned:',
+          result?.length ?? 0,
+          'items',
+        );
 
         if (result?.length) {
           const threads = result.map((row) => ({
@@ -1859,10 +1862,9 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
           {},
         );
 
-        const model =
-          this.env.USE_OPENAI === 'true'
-            ? groq('openai/gpt-oss-120b')
-            : anthropic(this.env.OPENAI_MODEL || 'claude-3-7-sonnet-20250219');
+        // Use Gemini as the default model - must explicitly pass API key in Cloudflare Workers
+        const google = createGoogleGenerativeAI({ apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY });
+        const model = google('gemini-3-flash-preview');
 
         const result = streamText({
           model,
