@@ -106,14 +106,19 @@ const connectionHandlerHook = async (account: Account) => {
   });
 
   const userInfo = await driver.getUserInfo().catch(async () => {
-    if (account.accessToken) {
-      await driver.revokeToken(account.accessToken);
-      await resetConnection(account.id);
+    try {
+      if (account.accessToken) {
+        await driver.revokeToken(account.accessToken);
+        await resetConnection(account.id);
+      }
+    } catch (cleanupError) {
+      console.error('Failed to cleanup after getUserInfo error:', cleanupError);
     }
-    throw new Response(null, { status: 301, headers: { Location: '/' } });
+    throw new APIError('UNAUTHORIZED', { message: 'Failed to get user info from provider' });
   });
 
   if (!userInfo?.address) {
+    console.error('Missing email in user info:', { userInfo });
     try {
       await Promise.allSettled(
         [account.accessToken, account.refreshToken]
@@ -124,7 +129,7 @@ const connectionHandlerHook = async (account: Account) => {
     } catch (error) {
       console.error('Failed to revoke tokens:', error);
     }
-    throw new Response(null, { status: 303, headers: { Location: '/' } });
+    throw new APIError('BAD_REQUEST', { message: 'Missing email in user info from provider' });
   }
 
   const updatingInfo = {
