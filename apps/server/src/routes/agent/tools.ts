@@ -2,7 +2,7 @@ import { getCurrentDateContext, GmailSearchAssistantSystemPrompt } from '../../l
 import { getThread, getZeroAgent } from '../../lib/server-utils';
 import type { IGetThreadResponse } from '../../lib/driver/types';
 import { composeEmail } from '../../trpc/routes/ai/compose';
-import { perplexity } from '@ai-sdk/perplexity';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { colors } from '../../lib/prompts';
 import { openai } from '@ai-sdk/openai';
 import { generateText, tool } from 'ai';
@@ -44,7 +44,7 @@ export const getEmbeddingVector = async (
 // const askZeroMailbox = (connectionId: string) =>
 //   tool({
 //     description: 'Ask Zero a question about the mailbox',
-//     parameters: z.object({
+//     inputSchema: z.object({
 //       question: z.string().describe('The question to ask Zero'),
 //       topK: z.number().describe('The number of results to return').max(9).min(1).default(3),
 //     }),
@@ -77,7 +77,7 @@ export const getEmbeddingVector = async (
 // const askZeroThread = (connectionId: string) =>
 //   tool({
 //     description: 'Ask Zero a question about a specific thread',
-//     parameters: z.object({
+//     inputSchema: z.object({
 //       threadId: z.string().describe('The ID of the thread to ask Zero about'),
 //       question: z.string().describe('The question to ask Zero'),
 //     }),
@@ -116,7 +116,7 @@ export const getEmbeddingVector = async (
 const getEmail = () =>
   tool({
     description: 'Return a placeholder tag for a specific email thread by ID',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the email thread to retrieve'),
     }),
     execute: async ({ id }) => {
@@ -125,49 +125,120 @@ const getEmail = () =>
     },
   });
 
+/**
+ * Read the full content of an email thread by ID.
+ * Returns the actual email messages with subject, body, sender, and date.
+ * Use this when you need to read and understand email content to answer questions.
+ */
+const readFullThread = (connectionId: string) =>
+  tool({
+    description:
+      'Read the full content of an email thread by ID. Use this to read actual email content when you need to answer questions about specific emails or conversations.',
+    inputSchema: z.object({
+      threadId: z.string().describe('The ID of the thread to read'),
+      maxMessages: z
+        .number()
+        .optional()
+        .default(10)
+        .describe('Maximum number of messages to return from the thread'),
+    }),
+    execute: async ({ threadId, maxMessages = 10 }) => {
+      try {
+        const { result: thread } = await getThread(connectionId, threadId);
+        if (!thread?.messages || thread.messages.length === 0) {
+          return { error: 'Thread not found or has no messages' };
+        }
+
+        const messages = thread.messages.slice(0, maxMessages).map((message) => ({
+          subject: message.subject || '',
+          body: message.decodedBody?.slice(0, 2000) || '', // Limit body to prevent bloat
+          from: message.sender?.email || '',
+          fromName: message.sender?.name || '',
+          to: message.to?.map((t) => t.email) || [],
+          cc: message.cc?.map((c) => c.email) || [],
+          date: message.receivedOn || '',
+        }));
+
+        return {
+          threadId,
+          subject: thread.latest?.subject || messages[0]?.subject || '',
+          messageCount: thread.messages.length,
+          messages,
+        };
+      } catch (error) {
+        console.error('[readFullThread] Error:', error);
+        return { error: 'Failed to read thread' };
+      }
+    },
+  });
+
 const getThreadSummary = (connectionId: string) =>
   tool({
     description: 'Get the summary of a specific email thread',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the email thread to get the summary of'),
     }),
     execute: async ({ id }) => {
-      const response = await env.VECTORIZE.getByIds([id]);
-      let thread: IGetThreadResponse | null = null;
       try {
-        const { result } = await getThread(connectionId, id);
-        thread = result;
-      } catch (error) {
-        console.error('Error getting thread', error);
-        return { error: 'Thread not found' };
-      }
-      if (response.length && response?.[0]?.metadata?.['summary'] && thread?.latest?.subject) {
-        const result = response[0].metadata as { summary: string; connection: string };
-        if (result.connection !== connectionId) {
-          return null;
+        let thread: IGetThreadResponse | null = null;
+        try {
+          const { result } = await getThread(connectionId, id);
+          thread = result;
+        } catch (error) {
+          console.error('[getThreadSummary] Error getting thread', error);
+          return { error: 'Thread not found' };
         }
-        const shortResponse = await env.AI.run('@cf/facebook/bart-large-cnn', {
-          input_text: result.summary,
-        });
+
+        // Try to get vectorize summary if available
+        let vectorizeResponse: any[] = [];
+        try {
+          vectorizeResponse = await env.VECTORIZE.getByIds([id]);
+        } catch (error) {
+          console.error('[getThreadSummary] VECTORIZE not available:', error);
+          // Continue without vectorize summary
+        }
+
+        if (
+          vectorizeResponse.length &&
+          vectorizeResponse?.[0]?.metadata?.['summary'] &&
+          thread?.latest?.subject
+        ) {
+          const result = vectorizeResponse[0].metadata as { summary: string; connection: string };
+          if (result.connection !== connectionId) {
+            return null;
+          }
+          try {
+            const shortResponse = await env.AI.run('@cf/facebook/bart-large-cnn', {
+              input_text: result.summary,
+            });
+            return {
+              short: shortResponse.summary,
+              subject: thread.latest?.subject,
+              sender: thread.latest?.sender,
+              date: thread.latest?.receivedOn,
+            };
+          } catch (aiError) {
+            console.error('[getThreadSummary] AI summarization failed:', aiError);
+            // Fall through to return basic info
+          }
+        }
+
         return {
-          short: shortResponse.summary,
-          subject: thread.latest?.subject,
-          sender: thread.latest?.sender,
-          date: thread.latest?.receivedOn,
+          subject: thread?.latest?.subject,
+          sender: thread?.latest?.sender,
+          date: thread?.latest?.receivedOn,
         };
+      } catch (error) {
+        console.error('[getThreadSummary] Unexpected error:', error);
+        return { error: 'Failed to get thread summary' };
       }
-      return {
-        subject: thread.latest?.subject,
-        sender: thread.latest?.sender,
-        date: thread.latest?.receivedOn,
-      };
     },
   });
 
 const composeEmailTool = (connectionId: string) =>
   tool({
     description: 'Compose an email using AI assistance',
-    parameters: z.object({
+    inputSchema: z.object({
       prompt: z.string().describe('The prompt or rough draft for the email'),
       emailSubject: z.string().optional().describe('The subject of the email'),
       to: z.array(z.string()).optional().describe('Recipients of the email'),
@@ -198,7 +269,7 @@ const composeEmailTool = (connectionId: string) =>
 // const listEmails = (connectionId: string) =>
 //   tool({
 //     description: 'List emails in a specific folder',
-//     parameters: z.object({
+//     inputSchema: z.object({
 //       folder: z.string().describe('The folder to list emails from').default('inbox'),
 //       maxResults: z
 //         .number()
@@ -216,7 +287,7 @@ const composeEmailTool = (connectionId: string) =>
 const markAsRead = (connectionId: string) =>
   tool({
     description: 'Mark emails as read',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to mark as read'),
     }),
     execute: async ({ threadIds }) => {
@@ -231,7 +302,7 @@ const markAsRead = (connectionId: string) =>
 const markAsUnread = (connectionId: string) =>
   tool({
     description: 'Mark emails as unread',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to mark as unread'),
     }),
     execute: async ({ threadIds }) => {
@@ -246,7 +317,7 @@ const markAsUnread = (connectionId: string) =>
 const modifyLabels = (connectionId: string) =>
   tool({
     description: 'Modify labels on emails',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('The IDs of the threads to modify'),
       options: z.object({
         addLabels: z
@@ -273,7 +344,7 @@ const modifyLabels = (connectionId: string) =>
 const getUserLabels = (connectionId: string) =>
   tool({
     description: 'Get all user labels',
-    parameters: z.object({}),
+    inputSchema: z.object({}),
     execute: async () => {
       const { stub: agent } = await getZeroAgent(connectionId);
       return await agent.getUserLabels();
@@ -283,7 +354,7 @@ const getUserLabels = (connectionId: string) =>
 const sendEmail = (connectionId: string) =>
   tool({
     description: 'Send a new email',
-    parameters: z.object({
+    inputSchema: z.object({
       to: z.array(
         z.object({
           email: z.string().describe('The email address of the recipient'),
@@ -344,7 +415,7 @@ const sendEmail = (connectionId: string) =>
 const createLabel = (connectionId: string) =>
   tool({
     description: 'Create a new label with custom colors, if it does nto exist already',
-    parameters: z.object({
+    inputSchema: z.object({
       name: z.string().describe('The name of the label to create'),
       backgroundColor: z
         .string()
@@ -369,7 +440,7 @@ const createLabel = (connectionId: string) =>
 const bulkDelete = (connectionId: string) =>
   tool({
     description: 'Move multiple emails to trash by adding the TRASH label',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('Array of email IDs to move to trash'),
     }),
     execute: async ({ threadIds }) => {
@@ -384,7 +455,7 @@ const bulkDelete = (connectionId: string) =>
 const bulkArchive = (connectionId: string) =>
   tool({
     description: 'Move multiple emails to the archive by removing the INBOX label',
-    parameters: z.object({
+    inputSchema: z.object({
       threadIds: z.array(z.string()).describe('Array of email IDs to move to archive'),
     }),
     execute: async ({ threadIds }) => {
@@ -399,7 +470,7 @@ const bulkArchive = (connectionId: string) =>
 const deleteLabel = (connectionId: string) =>
   tool({
     description: "Delete a label from the user's account",
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe('The ID of the label to delete'),
     }),
     execute: async ({ id }) => {
@@ -412,7 +483,7 @@ const deleteLabel = (connectionId: string) =>
 const buildGmailSearchQuery = () =>
   tool({
     description: 'Build a Gmail search query',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe('The search query to build, provided in natural language'),
     }),
     execute: async (params) => {
@@ -437,7 +508,7 @@ const buildGmailSearchQuery = () =>
 const getCurrentDate = () =>
   tool({
     description: 'Get the current date',
-    parameters: z.object({}).default({}),
+    inputSchema: z.object({}).default({}),
     execute: async () => {
       console.log('[DEBUG] getCurrentDate');
 
@@ -452,23 +523,45 @@ const getCurrentDate = () =>
     },
   });
 
+/**
+ * Think tool - allows the model to reason step-by-step before taking action.
+ * This helps with multi-step tool calling by giving the model a way to plan.
+ */
+const think = () =>
+  tool({
+    description:
+      'Use this tool to think through complex problems step-by-step before taking action. Call this when you need to plan which tools to use next, especially after receiving tool results that require follow-up actions.',
+    inputSchema: z.object({
+      thought: z.string().describe('Your reasoning about what to do next'),
+      nextAction: z.string().describe('The next action you plan to take (e.g., "call readFullThread to read email content")'),
+    }),
+    execute: async ({ thought, nextAction }) => {
+      console.log('[Think] Reasoning:', thought);
+      console.log('[Think] Next action:', nextAction);
+      return {
+        acknowledged: true,
+        message: 'Continue with your planned action.',
+      };
+    },
+  });
+
 export const webSearch = () =>
   tool({
-    description: 'Search the web for information using Perplexity AI',
-    parameters: z.object({
+    description: 'Search the web for current information using Google Search grounding',
+    inputSchema: z.object({
       query: z.string().describe('The query to search the web for'),
     }),
     execute: async ({ query }) => {
       try {
+        const google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_GENERATIVE_AI_API_KEY });
         const response = await generateText({
-          model: perplexity('sonar'),
-          messages: [
-            { role: 'system', content: 'Be precise and concise.' },
-            { role: 'system', content: 'Do not include sources in your response.' },
-            { role: 'system', content: 'Do not use markdown formatting in your response.' },
-            { role: 'user', content: query },
-          ],
-          maxTokens: 1024,
+          model: google('gemini-3-flash-preview'),
+          tools: {
+            google_search: google.tools.googleSearch({}),
+          },
+          system: 'Be precise and concise. Do not include sources in your response. Do not use markdown formatting in your response.',
+          prompt: query,
+          maxOutputTokens: 1024,
         });
 
         return response.text;
@@ -487,7 +580,7 @@ export const searchEmails = (connectionId: string) =>
   tool({
     description:
       'Search past emails exchanged with specific recipients to understand your communication style and relationship with them. Use this to discern formality level, tone, typical greetings/sign-offs, and relationship context.',
-    parameters: z.object({
+    inputSchema: z.object({
       recipientEmails: z.array(z.string()).describe('Email addresses to find conversations with'),
       maxResults: z.number().optional().default(10).describe('Maximum number of emails to return'),
       sentOnly: z
@@ -577,7 +670,7 @@ export const searchSimilarEmails = (connectionId: string) =>
   tool({
     description:
       'Search past emails by keyword to find similar topics, situations, or requests. Use this to understand how the user has responded to similar situations before.',
-    parameters: z.object({
+    inputSchema: z.object({
       keywords: z.array(z.string()).describe('Keywords to search for similar emails/topics'),
       maxResults: z.number().optional().default(5).describe('Maximum number of emails to return'),
       sentOnly: z
@@ -652,10 +745,11 @@ export const searchSimilarEmails = (connectionId: string) =>
     },
   });
 
-export const tools = async (connectionId: string, ragEffect: boolean = false) => {
-  const _tools = {
+export const tools = async (connectionId: string) => {
+  return {
     [Tools.GetThread]: getEmail(),
     [Tools.GetThreadSummary]: getThreadSummary(connectionId),
+    [Tools.ReadFullThread]: readFullThread(connectionId),
     [Tools.ComposeEmail]: composeEmailTool(connectionId),
     [Tools.MarkThreadsRead]: markAsRead(connectionId),
     [Tools.MarkThreadsUnread]: markAsUnread(connectionId),
@@ -668,33 +762,75 @@ export const tools = async (connectionId: string, ragEffect: boolean = false) =>
     [Tools.DeleteLabel]: deleteLabel(connectionId),
     [Tools.BuildGmailSearchQuery]: buildGmailSearchQuery(),
     [Tools.GetCurrentDate]: getCurrentDate(),
+    [Tools.Think]: think(),
     [Tools.WebSearch]: webSearch(),
     [Tools.SearchEmails]: searchEmails(connectionId),
     [Tools.SearchSimilarEmails]: searchSimilarEmails(connectionId),
     [Tools.InboxRag]: tool({
       description:
-        'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-      parameters: z.object({
-        query: z.string().describe('The query to search the inbox for'),
-        maxResults: z.number().describe('The maximum number of results to return').default(10),
-        folder: z.string().describe('The folder to search the inbox for').default('inbox'),
+        'Search emails using natural language and return the actual email content. Use this when user wants to find, read, understand, or answer questions about emails.',
+      inputSchema: z.object({
+        query: z.string().describe('The query to search for'),
+        maxResults: z.number().describe('The maximum number of results to return').default(5),
+        folder: z.string().describe('The folder to search (use "all mail" to search everywhere)').default('all mail'),
       }),
       execute: async ({ query, maxResults, folder }) => {
+        console.log('[InboxRag] Executing with params:', { query, folder, maxResults });
         const { stub: agent } = await getZeroAgent(connectionId);
         const res = await agent.searchThreads({ query, maxResults, folder });
-        return res.threadIds;
+        console.log('[InboxRag] searchThreads result:', { threadIds: res.threadIds, source: res.source });
+
+        if (!res.threadIds || res.threadIds.length === 0) {
+          return {
+            message: 'No emails found matching your search.',
+            emails: [],
+          };
+        }
+
+        // Automatically fetch email content for each thread (up to maxResults)
+        const emails: Array<{
+          threadId: string;
+          subject: string;
+          messages: Array<{
+            subject: string;
+            body: string;
+            from: string;
+            fromName: string;
+            to: string[];
+            date: string;
+          }>;
+        }> = [];
+
+        for (const threadId of res.threadIds.slice(0, maxResults)) {
+          try {
+            const { result: thread } = await getThread(connectionId, threadId);
+            if (thread?.messages && thread.messages.length > 0) {
+              const threadMessages = thread.messages.slice(0, 5).map((message) => ({
+                subject: message.subject || '',
+                body: message.decodedBody?.slice(0, 2000) || '', // Limit body to prevent bloat
+                from: message.sender?.email || '',
+                fromName: message.sender?.name || '',
+                to: message.to?.map((t) => t.email) || [],
+                date: message.receivedOn || '',
+              }));
+
+              emails.push({
+                threadId,
+                subject: thread.latest?.subject || threadMessages[0]?.subject || '',
+                messages: threadMessages,
+              });
+            }
+          } catch (error) {
+            console.error(`[InboxRag] Error fetching thread ${threadId}:`, error);
+          }
+        }
+
+        console.log('[InboxRag] Returning', emails.length, 'emails with content');
+        return {
+          message: `Found ${emails.length} email(s) matching your search.`,
+          emails,
+        };
       },
-    }),
-  };
-  if (ragEffect) return _tools;
-  return {
-    ..._tools,
-    [Tools.InboxRag]: tool({
-      description:
-        'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-      parameters: z.object({
-        query: z.string().describe('The query to search the inbox for'),
-      }),
     }),
   };
 };

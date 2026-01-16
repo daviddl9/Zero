@@ -24,11 +24,14 @@ import {
   type DB,
 } from './db';
 import {
-  appendResponseMessages,
-  createDataStreamResponse,
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   generateText,
+  stepCountIs,
   streamText,
   type StreamTextOnFinishCallback,
+  type UIMessage,
 } from 'ai';
 import {
   IncomingMessageType,
@@ -69,7 +72,7 @@ import * as schema from './db/schema';
 import { threads } from './db/schema';
 import { Effect, pipe } from 'effect';
 import { createDb } from '../../db';
-import type { Message } from 'ai';
+// UIMessage is used for the new AI SDK 6.x streaming API
 import { create } from './db';
 
 const decoder = new TextDecoder();
@@ -1792,6 +1795,11 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
 export class ZeroAgent extends AIChatAgent<ZeroEnv> {
   private chatMessageAbortControllers: Map<string, AbortController> = new Map();
 
+  // Context variables for use in onChatMessage (required by @cloudflare/ai-chat)
+  private currentThreadId: string = '';
+  private currentFolder: string = '';
+  private currentFilter: string = '';
+
   async registerZeroMCP() {
     await this.mcp.connect(this.env.VITE_PUBLIC_BACKEND_URL + '/sse', {
       transport: {
@@ -1839,41 +1847,69 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
     currentFolder: string,
     currentFilter: string,
   ) {
-    const dataStreamResponse = createDataStreamResponse({
-      execute: async (dataStream) => {
+    const stream = createUIMessageStream({
+      execute: async ({ writer }: { writer: any }) => {
         if (this.name === 'general') return;
         const connectionId = this.name;
-        const orchestrator = new ToolOrchestrator(dataStream, connectionId);
+        const orchestrator = new ToolOrchestrator(writer, connectionId);
 
         const mcpTools = this.mcp.unstable_getAITools();
+        console.log('[Agent] MCP tools:', Object.keys(mcpTools));
+
+        let emailTools = {};
+        try {
+          emailTools = await authTools(connectionId);
+          console.log('[Agent] Email tools loaded:', Object.keys(emailTools));
+        } catch (error) {
+          console.error('[Agent] Error loading email tools:', error);
+        }
 
         const rawTools = {
-          ...(await authTools(connectionId)),
+          ...emailTools,
           ...mcpTools,
         };
+        console.log('[Agent] Raw tools combined:', Object.keys(rawTools));
 
         const tools = orchestrator.processTools(rawTools);
+        console.log('[Agent] Available tools:', Object.keys(tools));
+
         const processedMessages = await processToolCalls(
           {
-            messages: this.messages,
-            dataStream,
+            messages: this.messages as UIMessage[],
+            writer,
             tools,
           },
           {},
         );
+        console.log('[Agent] Processed messages count:', processedMessages.length);
 
         // Use Gemini as the default model - must explicitly pass API key in Cloudflare Workers
         const google = createGoogleGenerativeAI({ apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY });
         const model = google('gemini-3-flash-preview');
+        console.log('[Agent] Starting streamText with Gemini 3...');
 
         const result = streamText({
           model,
-          maxSteps: 10,
-          messages: processedMessages,
+          stopWhen: stepCountIs(10), // Enable multi-step tool calling (up to 10 steps)
+          messages: await convertToModelMessages(processedMessages),
           tools,
           onFinish,
           onError: (error) => {
             console.error('Error in streamText', error);
+          },
+          onStepFinish: (step) => {
+            const toolNames = (step.toolCalls as any[])?.map((t: any) => t.toolName).join(',') || 'none';
+            console.log(`[Agent Step] reason=${step.finishReason}, tools=${toolNames}, hasText=${!!step.text}`);
+            if ((step.toolCalls as any[])?.length) {
+              (step.toolCalls as any[]).forEach((tc: any) => {
+                console.log(`  -> Tool: ${tc.toolName}`, JSON.stringify(tc.args).substring(0, 100));
+              });
+            }
+            if ((step.toolResults as any[])?.length) {
+              (step.toolResults as any[]).forEach((tr: any) => {
+                console.log(`  <- Result: ${tr.toolName}`, JSON.stringify(tr.result).substring(0, 150));
+              });
+            }
           },
           system: await getPrompt(getPromptName(connectionId, EPrompts.Chat), AiChatPrompt(), {
             currentThreadId,
@@ -1882,11 +1918,11 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
           }),
         });
 
-        result.mergeIntoDataStream(dataStream);
+        writer.merge((result as any).toUIMessageStream());
       },
     });
 
-    return dataStreamResponse;
+    return createUIMessageStreamResponse({ stream });
   }
 
   private async tryCatchChat<T>(fn: () => T | Promise<T>) {
@@ -1951,8 +1987,14 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
             threadId: string;
             currentFolder: string;
             currentFilter: string;
-            messages: Message[];
+            messages: UIMessage[];
           };
+
+          // Store context for use in onChatMessage (required by @cloudflare/ai-chat)
+          this.currentThreadId = threadId;
+          this.currentFolder = currentFolder;
+          this.currentFilter = currentFilter;
+
           this.broadcastChatMessage(
             {
               type: OutgoingMessageType.ChatMessages,
@@ -1960,44 +2002,12 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
             },
             [connection.id],
           );
-          await this.persistMessages(messages, [connection.id]);
+          // Cast to any for compatibility with inherited persistMessages type
+          await this.persistMessages(messages as any, [connection.id]);
 
-          const chatMessageId = data.id;
-          //   const abortSignal = this.getAbortSignal(chatMessageId);
-
-          return this.tryCatchChat(async () => {
-            const response = await this.onChatMessageWithContext(
-              async ({ response }) => {
-                const finalMessages = appendResponseMessages({
-                  messages,
-                  responseMessages: response.messages,
-                });
-
-                await this.persistMessages(finalMessages, [connection.id]);
-                this.removeAbortController(chatMessageId);
-              },
-              threadId,
-              currentFolder,
-              currentFilter,
-            );
-
-            if (response) {
-              await this.reply(data.id, response);
-            } else {
-              console.warn(
-                `[AIChatAgent] onChatMessage returned no response for chatMessageId: ${chatMessageId}`,
-              );
-              this.broadcastChatMessage(
-                {
-                  id: data.id,
-                  type: OutgoingMessageType.UseChatResponse,
-                  body: 'No response was generated by the agent.',
-                  done: true,
-                },
-                [connection.id],
-              );
-            }
-          });
+          // Delegate to base class's onMessage for proper stream handling
+          // The base class will call our onChatMessage method and handle the response
+          return super.onMessage(connection, message);
         }
         case IncomingMessageType.ChatClear: {
           this.destroyAbortControllers();
@@ -2140,5 +2150,22 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
     currentFilter: string,
   ) {
     return this.getDataStreamResponse(onFinish, currentThreadId, currentFolder, currentFilter);
+  }
+
+  /**
+   * Override onChatMessage as required by @cloudflare/ai-chat AIChatAgent.
+   * This method is called by the base class when handling HTTP chat requests.
+   * Uses stored context from the most recent message for threadId, folder, and filter.
+   */
+  async onChatMessage(
+    onFinish: StreamTextOnFinishCallback<{}>,
+    _options?: { abortSignal?: AbortSignal },
+  ): Promise<Response | undefined> {
+    return this.getDataStreamResponse(
+      onFinish,
+      this.currentThreadId,
+      this.currentFolder,
+      this.currentFilter,
+    );
   }
 }

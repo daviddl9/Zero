@@ -1,8 +1,8 @@
-import { streamText, tool, type DataStreamWriter, type ToolSet } from 'ai';
-import { perplexity } from '@ai-sdk/perplexity';
+import { streamText, tool, type UIMessageStreamWriter, type ToolSet } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
-import { getZeroAgent } from '../../lib/server-utils';
 import { Tools } from '../../types';
+import { env } from '../../env';
 import { z } from 'zod';
 
 /**
@@ -10,12 +10,12 @@ import { z } from 'zod';
  * Tools execute and return results, while agents stream responses directly.
  */
 export class ToolOrchestrator {
-  private dataStream: DataStreamWriter;
-  private streamingTools: Set<string> = new Set([Tools.WebSearch, Tools.InboxRag]);
+  private writer: UIMessageStreamWriter;
+  private streamingTools: Set<string> = new Set([Tools.WebSearch]);
   private connectionId: string;
 
-  constructor(dataStream: DataStreamWriter, connectionId: string) {
-    this.dataStream = dataStream;
+  constructor(writer: UIMessageStreamWriter, connectionId: string) {
+    this.writer = writer;
     this.connectionId = connectionId;
   }
 
@@ -37,28 +37,29 @@ export class ToolOrchestrator {
     // For webSearch, we want to stream the response directly without wrapping it as a tool result
     if (toolName === Tools.WebSearch) {
       return tool({
-        description: 'Search the web for information using Perplexity AI',
-        parameters: z.object({
+        description: 'Search the web for current information using Google Search grounding',
+        inputSchema: z.object({
           query: z.string().describe('The query to search the web for'),
         }),
-        execute: async ({ query }, { toolCallId }) => {
+        execute: async ({ query }: { query: string }, { toolCallId: _toolCallId }: { toolCallId: string }) => {
           try {
+            const google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_GENERATIVE_AI_API_KEY });
             const response = streamText({
-              model: perplexity('sonar'),
-              messages: [
-                { role: 'system', content: 'Be precise and concise.' },
-                { role: 'system', content: 'Do not include sources in your response.' },
-                { role: 'system', content: 'Do not use markdown formatting in your response.' },
-                { role: 'user', content: query },
-              ],
-              maxTokens: 1024,
+              model: google('gemini-3-flash-preview'),
+              tools: {
+                google_search: google.tools.googleSearch({}),
+              },
+              system: 'Be precise and concise. Do not include sources in your response. Do not use markdown formatting in your response.',
+              prompt: query,
+              maxOutputTokens: 1024,
             });
 
-            // Stream the response directly to the data stream
-            response.mergeIntoDataStream(this.dataStream);
+            // Stream the response directly to the UI message stream
+            this.writer.merge(response.toUIMessageStream());
 
-            // Return a placeholder result since the actual streaming happens above
-            return { type: 'streaming_response', toolName, toolCallId };
+            // Return a simple string result since the actual streaming happens above
+            // Note: Don't return objects with 'type' property as it breaks the stream parser
+            return `Web search completed for: ${query}`;
           } catch (error) {
             console.error('Error searching the web:', error);
             throw new Error('Failed to search the web');
@@ -67,22 +68,8 @@ export class ToolOrchestrator {
       });
     }
 
-    if (toolName === Tools.InboxRag) {
-      return tool({
-        description:
-          'Search the inbox for emails using natural language. Returns only an array of threadIds.',
-        parameters: z.object({
-          query: z.string().describe('The query to search the inbox for'),
-          folder: z.string().describe('The folder to search the inbox for').default('inbox'),
-          maxResults: z.number().describe('The maximum number of results to return').default(10),
-        }),
-        execute: async ({ query, folder, maxResults }) => {
-          const { stub: agent } = await getZeroAgent(this.connectionId);
-          const res = await agent.searchThreads({ query, maxResults, folder });
-          return res.threadIds;
-        },
-      });
-    }
+    // InboxRag is no longer a streaming tool - it's handled in tools.ts
+    // with automatic email content fetching
 
     return originalTool;
   }
