@@ -42,9 +42,6 @@ import {
   AlertCircle,
   CheckCircle2,
   HelpCircle,
-  X,
-  Copy,
-  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -75,21 +72,6 @@ interface ParsedSkill {
   error?: string;
 }
 
-const SKILL_TEMPLATE = `---
-name: my-skill-name
-description: Replace with description of the skill and when the AI should use it.
----
-
-# Skill Instructions
-
-Add your skill instructions here. This content will be available to the AI copilot when this skill is invoked.
-
-## Guidelines
-
-- Be specific about when this skill should be used
-- Include any relevant context or reference information
-- Structure the content clearly with headings and lists
-`;
 
 /**
  * Parse name and description from YAML frontmatter.
@@ -146,62 +128,6 @@ function parseSkillContent(content: string): ParsedSkill {
   return { name, description, isValid: true };
 }
 
-function ExampleModal({ onClose, onUseTemplate }: { onClose: () => void; onUseTemplate: () => void }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(SKILL_TEMPLATE);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-2xl rounded-lg border bg-background shadow-lg">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="font-semibold">{m['pages.settings.skills.exampleTitle']()}</h3>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="p-4">
-          <p className="mb-3 text-sm text-muted-foreground">
-            {m['pages.settings.skills.exampleDescription']()}
-          </p>
-          <div className="relative rounded-md border bg-muted/30">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-2 top-2 h-8 gap-1 text-xs"
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <>
-                  <Check className="h-3 w-3" />
-                  {m['pages.settings.skills.copied']()}
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3 w-3" />
-                  {m['pages.settings.skills.copyTemplate']()}
-                </>
-              )}
-            </Button>
-            <pre className="overflow-x-auto p-4 font-mono text-xs">{SKILL_TEMPLATE}</pre>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" onClick={onClose}>
-            {m['common.actions.close']()}
-          </Button>
-          <Button onClick={onUseTemplate}>
-            {m['pages.settings.skills.useTemplate']()}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ReferenceEditor({
   skillId,
@@ -430,7 +356,6 @@ export function SkillDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [showExample, setShowExample] = useState(false);
   const isControlled = open !== undefined;
   const dialogOpen = isControlled ? open : isOpen;
   const setDialogOpen = isControlled ? onOpenChange! : setIsOpen;
@@ -450,7 +375,6 @@ export function SkillDialog({
   useEffect(() => {
     if (dialogOpen) {
       setShowPreview(false);
-      setShowExample(false);
       if (editingSkill) {
         form.reset({
           name: editingSkill.name,
@@ -486,7 +410,6 @@ export function SkillDialog({
   const handleClose = () => {
     setDialogOpen(false);
     setShowPreview(false);
-    setShowExample(false);
     form.reset({
       name: '',
       description: '',
@@ -504,10 +427,6 @@ export function SkillDialog({
     setShowPreview(false);
   };
 
-  const handleUseTemplate = () => {
-    form.setValue('content', SKILL_TEMPLATE);
-    setShowExample(false);
-  };
 
   return (
     <>
@@ -617,16 +536,15 @@ export function SkillDialog({
                       <FormItem>
                         <div className="flex items-center justify-between">
                           <FormLabel>{m['pages.settings.skills.contentLabel']()}</FormLabel>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 text-xs text-muted-foreground"
-                            onClick={() => setShowExample(true)}
+                          <a
+                            href="https://github.com/anthropics/skills/blob/main/template/SKILL.md"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                           >
                             <HelpCircle className="h-3.5 w-3.5" />
                             {m['pages.settings.skills.viewExample']()}
-                          </Button>
+                          </a>
                         </div>
                         <FormControl>
                           <Textarea
@@ -753,10 +671,6 @@ export function SkillDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Example Modal */}
-      {showExample && (
-        <ExampleModal onClose={() => setShowExample(false)} onUseTemplate={handleUseTemplate} />
-      )}
     </>
   );
 }
