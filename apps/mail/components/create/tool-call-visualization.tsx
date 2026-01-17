@@ -45,27 +45,28 @@ function ToolStatusIcon({ state }: { state: ToolCallData['state'] }) {
 
 function ToolCallCard({ toolCall }: { toolCall: ToolCallData }) {
   const [isOpen, setIsOpen] = useState(false);
-  const hasDetails = toolCall.args || toolCall.result;
+  // Always allow expansion if there are args, even without result (for pending calls)
+  const hasDetails = (toolCall.args && Object.keys(toolCall.args).length > 0) || toolCall.result !== undefined;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-muted/30 dark:border-gray-700 dark:bg-gray-800/50">
         <CollapsibleTrigger
           disabled={!hasDetails}
           className={cn(
             'flex w-full items-center gap-2 px-3 py-2 text-left transition-colors',
-            hasDetails && 'hover:bg-gray-100 dark:hover:bg-gray-800',
+            hasDetails && 'hover:bg-muted/50 dark:hover:bg-gray-800',
             !hasDetails && 'cursor-default',
           )}
         >
           {hasDetails &&
             (isOpen ? (
-              <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             ))}
-          <Wrench className="h-3.5 w-3.5 text-gray-500" />
-          <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <Wrench className="h-4 w-4 text-muted-foreground" />
+          <span className="flex-1 text-sm font-medium text-foreground">
             {formatToolName(toolCall.toolName)}
           </span>
           <ToolStatusIcon state={toolCall.state} />
@@ -73,28 +74,28 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCallData }) {
 
         {hasDetails && (
           <CollapsibleContent>
-            <div className="space-y-2 border-t border-gray-200 px-3 pb-3 pt-2 dark:border-gray-700">
+            <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
               {toolCall.args && Object.keys(toolCall.args).length > 0 && (
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">
                     Arguments
                   </span>
-                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-300">
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-2 text-xs">
                     {formatJson(toolCall.args)}
                   </pre>
                 </div>
               )}
               {toolCall.result !== undefined && (
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">
                     Result
                   </span>
                   <pre
                     className={cn(
                       'max-h-48 overflow-auto whitespace-pre-wrap break-words rounded p-2 text-xs',
                       toolCall.state === 'error'
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                        : 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300',
+                        ? 'bg-destructive/10 text-destructive'
+                        : 'bg-background',
                     )}
                   >
                     {typeof toolCall.result === 'string'
@@ -112,43 +113,15 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCallData }) {
 }
 
 export function ToolCallVisualization({ toolCalls, className }: ToolCallVisualizationProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
   if (toolCalls.length === 0) {
     return null;
   }
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div
-        className={cn(
-          'mb-3 overflow-hidden rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800/50 dark:bg-blue-900/20',
-          className,
-        )}
-      >
-        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-100/50 dark:hover:bg-blue-900/30">
-          {isOpen ? (
-            <ChevronDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          )}
-          <Wrench className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          <span className="flex-1 text-sm font-medium text-blue-700 dark:text-blue-300">
-            Tool Calls
-          </span>
-          <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-800 dark:text-blue-300">
-            {toolCalls.length}
-          </span>
-        </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <div className="space-y-2 px-3 pb-3">
-            {toolCalls.map((toolCall, index) => (
-              <ToolCallCard key={`${toolCall.toolName}-${index}`} toolCall={toolCall} />
-            ))}
-          </div>
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
+    <div className={cn('mb-3 space-y-2', className)}>
+      {toolCalls.map((toolCall, index) => (
+        <ToolCallCard key={`${toolCall.toolName}-${index}`} toolCall={toolCall} />
+      ))}
+    </div>
   );
 }

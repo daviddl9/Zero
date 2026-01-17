@@ -7,7 +7,6 @@ import useComposeEditor from '@/hooks/use-compose-editor';
 import { useRef, useCallback, useEffect } from 'react';
 import type { useAgentChat } from 'agents/ai-react';
 import { Markdown } from '@react-email/components';
-import { useDevMode } from '@/hooks/use-dev-mode';
 import { TextShimmer } from '../ui/text-shimmer';
 import { useThread } from '@/hooks/use-threads';
 import { MailLabels } from '../mail/mail-list';
@@ -202,17 +201,13 @@ export function AIChat({
   sendMessage,
   error,
   status,
-  showDevTools,
+  showDevTools: _showDevTools,
 }: ReturnType<typeof useAgentChat> & { showDevTools?: boolean }): React.ReactElement {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const { isFullScreen } = useAIFullScreen();
   const [aiSidebarOpen] = useQueryState('aiSidebar');
   const { toggleOpen } = useAISidebar();
-  const isDevMode = useDevMode();
-
-  // Show dev visualizations only when in dev mode AND toggle is enabled
-  const shouldShowDevTools = isDevMode && showDevTools;
 
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
@@ -285,23 +280,37 @@ export function AIChat({
             </div>
           ) : (
             messages.map((message, index) => {
-              const textParts = message.parts.filter((part) => part.type === 'text');
-              const toolParts = message.parts.filter((part) => part.type === 'tool-invocation');
+              // Handle both parts-based and direct toolCalls structure
+              const parts = (message as any).parts || [];
+              const textParts = parts.filter((part: any) => part.type === 'text');
+              // Tool calls have type "tool-{toolName}" (e.g., "tool-inboxRag") not "tool-invocation"
+              const toolParts = parts.filter((part: any) => 
+                typeof part.type === 'string' && part.type.startsWith('tool-')
+              );
 
-              // Separate thinking tool invocations from other tools
-              const thinkingParts = toolParts.filter(
-                (part) => part.toolInvocation?.toolName === Tools.SequentialThinking,
+              // Extract tool name from part type (format: "tool-{toolName}")
+              // Tool call data is directly on the part, not nested in toolInvocation
+              const sequentialThinkingParts = toolParts.filter(
+                (part: any) => part.type === `tool-${Tools.SequentialThinking}` || part.type === `tool-sequentialthinking`,
+              );
+              const thinkToolParts = toolParts.filter(
+                (part: any) => part.type === `tool-${Tools.Think}` || part.type === 'tool-think',
               );
               const otherToolParts = toolParts.filter(
-                (part) => part.toolInvocation?.toolName !== Tools.SequentialThinking,
+                (part: any) =>
+                  part.type !== `tool-${Tools.SequentialThinking}` &&
+                  part.type !== `tool-sequentialthinking` &&
+                  part.type !== `tool-${Tools.Think}` &&
+                  part.type !== 'tool-think',
               );
 
-              // Parse thinking data from tool results
-              const thoughts: ThoughtData[] = thinkingParts
-                .filter((part) => part.toolInvocation?.result)
-                .map((part) => {
+              // Parse sequential thinking data from tool results
+              // Tool data is directly on the part: part.output contains the result
+              const sequentialThoughts: ThoughtData[] = sequentialThinkingParts
+                .filter((part: any) => part.output || part.result)
+                .map((part: any) => {
                   try {
-                    const result = part.toolInvocation?.result;
+                    const result = part.output || part.result;
                     if (typeof result === 'string') {
                       return JSON.parse(result);
                     }
@@ -312,13 +321,53 @@ export function AIChat({
                 })
                 .filter((t): t is ThoughtData => t !== null && typeof t.thought === 'string');
 
-              // Parse tool call data for visualization
-              const toolCallsData: ToolCallData[] = otherToolParts.map((part) => ({
-                toolName: part.toolInvocation?.toolName || 'unknown',
-                args: part.toolInvocation?.args as Record<string, unknown>,
-                result: part.toolInvocation?.result,
-                state: part.toolInvocation?.result ? 'result' : 'pending',
-              }));
+              // Parse simple think tool data - show all, including pending
+              // Tool data is directly on the part: part.type = "tool-think", part.input (args), part.output (result)
+              const thinkToolCalls = thinkToolParts.map((part: any) => {
+                const toolName = part.type?.replace('tool-', '') || 'unknown';
+                const args = part.input || part.args || {};
+                const result = part.output || part.result;
+                return {
+                  toolName,
+                  args: args as Record<string, unknown>,
+                  result: result,
+                  state: part.state === 'result' || part.state === 'output-available'
+                    ? 'result' 
+                    : part.state === 'error'
+                    ? 'error'
+                    : part.state === 'streaming' || part.state === 'input-streaming'
+                    ? 'streaming'
+                    : result !== undefined
+                    ? 'result'
+                    : 'pending',
+                };
+              });
+
+              // Parse tool call data for visualization - show all, including pending
+              // Tool data is directly on the part: part.type = "tool-{name}", part.input (args), part.output (result)
+              const toolCallsData: ToolCallData[] = otherToolParts.map((part: any) => {
+                const toolName = part.type?.replace('tool-', '') || 'unknown';
+                
+                // Check for args in multiple possible locations (input is the correct one)
+                const args = part.input || part.args || {};
+                // Results are in part.output, not part.result
+                const result = part.output || part.result;
+                
+                return {
+                  toolName,
+                  args: args as Record<string, unknown>,
+                  result: result,
+                  state: part.state === 'result' || part.state === 'output-available'
+                    ? 'result' 
+                    : part.state === 'error'
+                    ? 'error'
+                    : part.state === 'streaming' || part.state === 'input-streaming'
+                    ? 'streaming'
+                    : result !== undefined
+                    ? 'result'
+                    : 'pending',
+                };
+              });
 
               return (
                 <div
@@ -326,30 +375,47 @@ export function AIChat({
                   className="mb-2 flex flex-col"
                   data-message-role={message.role}
                 >
-                  {/* Dev mode: Show thinking visualization */}
-                  {shouldShowDevTools && thoughts.length > 0 && (
-                    <ThinkingVisualization
-                      thoughts={thoughts}
-                      isStreaming={status === 'streaming'}
-                    />
+                  {/* Show sequential thinking visualization */}
+                  {sequentialThoughts.length > 0 && (
+                    <div className="mb-2">
+                      <ThinkingVisualization
+                        thoughts={sequentialThoughts}
+                        isStreaming={status === 'streaming'}
+                      />
+                    </div>
                   )}
 
-                  {/* Dev mode: Show tool calls visualization */}
-                  {shouldShowDevTools && toolCallsData.length > 0 && (
-                    <ToolCallVisualization toolCalls={toolCallsData} />
+                  {/* Show simple think tool visualization */}
+                  {thinkToolCalls.length > 0 && (
+                    <div className="mb-2">
+                      <ThinkingVisualization
+                        thinkToolCalls={thinkToolCalls}
+                        isStreaming={status === 'streaming'}
+                      />
+                    </div>
+                  )}
+
+                  {/* Show tool calls visualization - always show if there are any tool calls */}
+                  {toolCallsData.length > 0 && (
+                    <div className="mb-2">
+                      <ToolCallVisualization toolCalls={toolCallsData} />
+                    </div>
                   )}
 
                   {/* Regular tool responses (non-dev mode or specific visualizations) */}
                   {otherToolParts.map(
-                    (part, idx) =>
-                      part.toolInvocation?.result && (
+                    (part: any, idx) => {
+                      const toolName = part.type?.replace('tool-', '') || 'unknown';
+                      const result = part.output || part.result;
+                      return result && (
                         <ToolResponse
-                          key={`${part.toolInvocation.toolName}-${idx}`}
-                          toolName={part.toolInvocation.toolName}
-                          result={part.toolInvocation.result}
-                          args={part.toolInvocation.args}
+                          key={`${toolName}-${idx}`}
+                          toolName={toolName}
+                          result={result}
+                          args={part.input || part.args}
                         />
-                      ),
+                      );
+                    },
                   )}
                   {textParts.length > 0 && (
                     <div

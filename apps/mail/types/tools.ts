@@ -18,4 +18,5 @@ export enum Tools {
   WebSearch = 'webSearch',
   InboxRag = 'inboxRag',
   SequentialThinking = 'sequentialthinking',
+  Think = 'think',
 }

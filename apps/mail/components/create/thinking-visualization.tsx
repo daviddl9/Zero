@@ -2,6 +2,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, ChevronRight, Brain, RefreshCw, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import type { ToolCallData } from './tool-call-visualization';
 
 export interface ThoughtData {
   thought: string;
@@ -15,7 +16,8 @@ export interface ThoughtData {
 }
 
 interface ThinkingVisualizationProps {
-  thoughts: ThoughtData[];
+  thoughts?: ThoughtData[];
+  thinkToolCalls?: ToolCallData[];
   isStreaming?: boolean;
   className?: string;
 }
@@ -70,14 +72,79 @@ function ThoughtCard({ thought }: { thought: ThoughtData }) {
   );
 }
 
+function SimpleThinkCard({ toolCall }: { toolCall: ToolCallData }) {
+  const thought = toolCall.args?.thought as string | undefined;
+  const nextAction = toolCall.args?.nextAction as string | undefined;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 transition-all dark:border-gray-700 dark:bg-gray-800/50">
+      <div className="mb-2 flex items-center gap-2">
+        <Brain className="h-3.5 w-3.5 text-purple-500" />
+        <span className="text-xs font-medium text-purple-600 dark:text-purple-400">Thinking</span>
+      </div>
+      {thought && (
+        <div className="mb-2">
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+            {thought}
+          </p>
+        </div>
+      )}
+      {nextAction && (
+        <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Next action:</span>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-400">
+            {nextAction}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ThinkingVisualization({
   thoughts,
+  thinkToolCalls,
   isStreaming = false,
   className,
 }: ThinkingVisualizationProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  if (thoughts.length === 0) {
+  // Handle simple think tool calls
+  if (thinkToolCalls && thinkToolCalls.length > 0) {
+    return (
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <div
+          className={cn(
+            'mb-3 overflow-hidden rounded-lg border border-purple-200 bg-purple-50/50 dark:border-purple-800/50 dark:bg-purple-900/20',
+            className,
+          )}
+        >
+          <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-purple-100/50 dark:hover:bg-purple-900/30">
+            {isOpen ? (
+              <ChevronDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            )}
+            <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            <span className="flex-1 text-sm font-medium text-purple-700 dark:text-purple-300">
+              Thinking{isStreaming ? '...' : ''}
+            </span>
+          </CollapsibleTrigger>
+
+          <CollapsibleContent>
+            <div className="space-y-2 px-3 pb-3">
+              {thinkToolCalls.map((toolCall, index) => (
+                <SimpleThinkCard key={`think-${index}`} toolCall={toolCall} />
+              ))}
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
+    );
+  }
+
+  // Handle sequential thinking
+  if (!thoughts || thoughts.length === 0) {
     return null;
   }
 
