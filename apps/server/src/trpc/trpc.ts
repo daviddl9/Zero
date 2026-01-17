@@ -6,6 +6,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import { createLoggingMiddleware } from '../lib/trpc-logging';
 
 import { redis } from '../lib/services';
+import { env } from '../env';
 import type { Context } from 'hono';
 import superjson from 'superjson';
 
@@ -144,25 +145,41 @@ export const createRateLimiterMiddleware = (config: {
   generatePrefix: (ctx: TrpcContext, input: any) => string;
 }) =>
   t.middleware(async ({ next, ctx, input }) => {
-    const ratelimiter = new Ratelimit({
-      redis: redis(),
-      limiter: config.limiter,
-      analytics: true,
-      prefix: config.generatePrefix(ctx, input),
-    });
-    const finalIp = getConnInfo(ctx.c).remote.address ?? 'no-ip';
-    const { success, limit, reset, remaining } = await ratelimiter.limit(finalIp);
-
-    ctx.c.res.headers.append('X-RateLimit-Limit', limit.toString());
-    ctx.c.res.headers.append('X-RateLimit-Remaining', remaining.toString());
-    ctx.c.res.headers.append('X-RateLimit-Reset', reset.toString());
-
-    if (!success) {
-      console.log(`Rate limit exceeded for IP ${finalIp}.`);
-      throw new TRPCError({
-        code: 'TOO_MANY_REQUESTS',
-        message: 'Too many requests. Please try again later.',
+    // Skip rate limiting in non-production if Redis fails
+    try {
+      const ratelimiter = new Ratelimit({
+        redis: redis(),
+        limiter: config.limiter,
+        analytics: true,
+        prefix: config.generatePrefix(ctx, input),
       });
+      const finalIp = getConnInfo(ctx.c).remote.address ?? 'no-ip';
+      const { success, limit, reset, remaining } = await ratelimiter.limit(finalIp);
+
+      ctx.c.res.headers.append('X-RateLimit-Limit', limit.toString());
+      ctx.c.res.headers.append('X-RateLimit-Remaining', remaining.toString());
+      ctx.c.res.headers.append('X-RateLimit-Reset', reset.toString());
+
+      if (!success) {
+        console.log(`Rate limit exceeded for IP ${finalIp}.`);
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Too many requests. Please try again later.',
+        });
+      }
+    } catch (error) {
+      // In production, re-throw rate limit errors
+      if (env.NODE_ENV === 'production') {
+        throw error;
+      }
+      // In dev/local, log and skip rate limiting if Redis unavailable
+      if (error instanceof TRPCError && error.code === 'TOO_MANY_REQUESTS') {
+        throw error; // Re-throw actual rate limit exceeded errors
+      }
+      console.warn(
+        '[Rate Limit] Redis unavailable, skipping rate limiting:',
+        error instanceof Error ? error.message : error,
+      );
     }
 
     return next();

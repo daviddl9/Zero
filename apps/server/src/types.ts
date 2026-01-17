@@ -236,6 +236,13 @@ export enum Tools {
   InboxRag = 'inboxRag',
   BuildGmailSearchQuery = 'buildGmailSearchQuery',
   GetCurrentDate = 'getCurrentDate',
+  ReadFullThread = 'readFullThread',
+  SearchEmails = 'searchEmails',
+  SearchSimilarEmails = 'searchSimilarEmails',
+  // AI Copilot tools
+  Think = 'think',
+  ListSkills = 'listSkills',
+  ReadSkill = 'readSkill',
 }
 
 export type AppContext = Context<{ Bindings: Env }>;

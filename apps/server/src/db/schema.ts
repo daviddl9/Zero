@@ -325,3 +325,46 @@ export const emailTemplate = createTable(
     unique('mail0_email_template_user_id_name_unique').on(t.userId, t.name),
   ],
 );
+
+// AI Copilot Skills - stores skill definitions for AI agent
+export const skill = createTable(
+  'skill',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    connectionId: text('connection_id').references(() => connection.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    content: text('content').notNull(),
+    category: text('category'),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('skill_user_id_idx').on(t.userId),
+    index('skill_connection_id_idx').on(t.connectionId),
+    index('skill_category_idx').on(t.category),
+    unique('skill_user_id_name_unique').on(t.userId, t.name),
+  ],
+);
+
+// AI Agent Configuration - stores agent persona and guidelines
+export const agentConfig = createTable(
+  'agent_config',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' })
+      .unique(),
+    jobDescription: text('job_description'),
+    writingStyle: text('writing_style'),
+    guidelines: text('guidelines'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_config_user_id_idx').on(t.userId)],
+);

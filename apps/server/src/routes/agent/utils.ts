@@ -1,5 +1,5 @@
 import {
-  convertToCoreMessages,
+  convertToModelMessages,
   type DataStreamWriter,
   type ToolExecutionOptions,
   type ToolSet,
@@ -80,7 +80,7 @@ export async function processToolCalls<
         const toolInstance = executeFunctions[toolName];
         if (toolInstance) {
           result = await toolInstance(toolInvocation.args, {
-            messages: convertToCoreMessages(messages),
+            messages: await convertToModelMessages(messages),
             toolCallId: toolInvocation.toolCallId,
           });
         } else {
