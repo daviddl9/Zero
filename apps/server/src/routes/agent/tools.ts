@@ -707,12 +707,52 @@ export const tools = async (connectionId: string) => {
     [Tools.WebSearch]: webSearch(),
     [Tools.SearchEmails]: searchEmails(connectionId),
     [Tools.SearchSimilarEmails]: searchSimilarEmails(connectionId),
-    [Tools.InboxRag]: tool({
+    [Tools.InboxRag]: (() => {
+      // Relevance scoring helper for email search results
+      const scoreEmailRelevance = (
+        email: { subject: string; messages: Array<{ body: string; from: string; fromName: string }> },
+        query: string,
+      ): number => {
+        const queryTerms = query
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((t) => t.length > 2);
+        let score = 0;
+
+        // Subject matches (highest weight)
+        const subjectLower = email.subject.toLowerCase();
+        queryTerms.forEach((term) => {
+          if (subjectLower.includes(term)) score += 5;
+        });
+
+        // Sender matches
+        const msg = email.messages[0];
+        if (msg) {
+          const fromLower = msg.from.toLowerCase();
+          const fromNameLower = msg.fromName.toLowerCase();
+          queryTerms.forEach((term) => {
+            if (fromLower.includes(term)) score += 3;
+            if (fromNameLower.includes(term)) score += 3;
+          });
+
+          // Body matches (lower weight)
+          email.messages.forEach((m) => {
+            const bodyLower = m.body.toLowerCase();
+            queryTerms.forEach((term) => {
+              if (bodyLower.includes(term)) score += 1;
+            });
+          });
+        }
+
+        return score;
+      };
+
+      return tool({
       description:
         'Search emails using natural language and return the actual email content. Use this when user wants to find, read, understand, or answer questions about emails.',
       inputSchema: z.object({
         query: z.string().describe('The query to search for'),
-        maxResults: z.number().describe('The maximum number of results to return').default(5),
+        maxResults: z.number().describe('The maximum number of results to return').default(15),
         folder: z.string().describe('The folder to search (use "all mail" to search everywhere)').default('all mail'),
       }),
       execute: async ({ query, maxResults, folder }) => {
@@ -766,12 +806,24 @@ export const tools = async (connectionId: string) => {
           }
         }
 
-        console.log('[InboxRag] Returning', emails.length, 'emails with content');
+        // Sort emails by relevance score (with date as tiebreaker)
+        emails.sort((a, b) => {
+          const aScore = scoreEmailRelevance(a, query);
+          const bScore = scoreEmailRelevance(b, query);
+          if (aScore !== bScore) return bScore - aScore; // Higher score first
+          // Tiebreaker: most recent first
+          const aDate = a.messages[0]?.date ? new Date(a.messages[0].date).getTime() : 0;
+          const bDate = b.messages[0]?.date ? new Date(b.messages[0].date).getTime() : 0;
+          return bDate - aDate;
+        });
+
+        console.log('[InboxRag] Returning', emails.length, 'emails with content (sorted by relevance)');
         return {
           message: `Found ${emails.length} email(s) matching your search.`,
           emails,
         };
       },
-    }),
+    });
+    })(),
   };
 };

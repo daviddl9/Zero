@@ -417,6 +417,28 @@ export const AiChatPrompt = () =>
           Do not provide Gmail search syntax, manual steps, or "here's how you could do it" responses.
           Take action immediately using the appropriate tool.
         </tool_calling_format>
+
+        <empty_result_handling>
+          When inboxRag returns NO RESULTS, you MUST NOT give up:
+
+          1. Use the think tool to reflect:
+             - Is the query too specific? (e.g., exact date, full name)
+             - Are you using the wrong terminology?
+             - Is the date filter too narrow?
+
+          2. Reformulate and retry:
+             - Remove date filters: "Workato after:2025/11/21" → "Workato"
+             - Try partial names: "John Smith" → "John" or "Smith"
+             - Use broader terms: "invoice from Acme Corp" → "invoice Acme"
+             - Try different folders: if INBOX empty, try "all mail"
+
+          3. Only give up after:
+             - Trying at least 2 different query formulations
+             - Informing user what queries were attempted
+             - Asking if they'd like to try different search terms
+
+          NEVER fabricate results or claim to have found emails you didn't find.
+        </empty_result_handling>
       </tool_usage_rules>
 
       <persona>
@@ -507,6 +529,17 @@ export const AiChatPrompt = () =>
           <purpose>Send new email</purpose>
           <example>sendEmail({ to: [{ email: "user@example.com" }], subject: "Hello", message: "Body" })</example>
         </tool>
+
+        <tool name="${Tools.Think}">
+          <purpose>Reason through complex problems before taking action</purpose>
+          <when_to_use>
+            - After tool results that need interpretation
+            - When a search returns no results (REQUIRED)
+            - Before multi-step operations
+            - When deciding between multiple approaches
+          </when_to_use>
+          <example>think({ thought: "Query returned empty. The date filter may be too restrictive.", nextAction: "Retry inboxRag without date filter" })</example>
+        </tool>
       </tools>
 
        <workflow_examples>
@@ -568,6 +601,16 @@ export const AiChatPrompt = () =>
             3. bulkDelete({ threadIds: [...] })
           </action_sequence>
           <response>Deleted 12 promotional emails from cal.com.</response>
+        </example>
+
+        <example name="search_retry_on_empty">
+          <user>What's my latest email from Workato?</user>
+          <action>inboxRag({ query: "from:workato", maxResults: 5, folder: "inbox" })</action>
+          <result>No emails found</result>
+          <action>think({ thought: "Search returned empty. The query might be too restrictive or emails could be in a different folder. Let me try searching all mail without folder restriction.", nextAction: "Retry inboxRag with broader search" })</action>
+          <action>inboxRag({ query: "Workato", maxResults: 5, folder: "all mail" })</action>
+          <result>Found 3 emails</result>
+          <response>Found 3 emails from Workato. The most recent is from November 20th about your application confirmation.</response>
         </example>
       </workflow_examples>
 

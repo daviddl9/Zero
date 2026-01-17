@@ -240,8 +240,8 @@ export function AIChat({
     const text = editor.getText().trim();
     if (!text) return;
 
-    await sendMessage({ text });
     editor.commands.clearContent(true);
+    await sendMessage({ text });
     setTimeout(() => {
       scrollToBottom();
     }, 100);
