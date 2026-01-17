@@ -23,13 +23,9 @@ export type ZeroEnv = {
   send_email_queue: Queue;
   snoozed_emails: KVNamespace;
   gmail_sub_age: KVNamespace;
-  subscribe_queue: Queue;
   AI: Ai;
   gmail_history_id: KVNamespace;
   gmail_processing_threads: KVNamespace;
-  subscribed_accounts: KVNamespace;
-  connection_labels: KVNamespace;
-  prompts_storage: KVNamespace;
   NODE_ENV: 'local' | 'development' | 'production';
   JWT_SECRET: 'secret';
   ELEVENLABS_API_KEY: '1234567890';
@@ -65,7 +61,6 @@ export type ZeroEnv = {
   REDIS_URL: string;
   REDIS_TOKEN: string;
   OPENAI_API_KEY: string;
-  BRAIN_URL: string;
   COMPOSIO_API_KEY: string;
   GROQ_API_KEY: string;
   EARLY_ACCESS_ENABLED: string;
@@ -90,8 +85,6 @@ export type ZeroEnv = {
   AXIOM_DATASET: string;
   THREADS_BUCKET: R2Bucket;
   thread_queue: Queue;
-  VECTORIZE: VectorizeIndex;
-  VECTORIZE_MESSAGE: VectorizeIndex;
   DEV_PROXY: string;
   MEET_AUTH_HEADER: string;
   MEET_API_URL: string;

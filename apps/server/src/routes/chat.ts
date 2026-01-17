@@ -12,7 +12,7 @@ import {
   GmailSearchAssistantSystemPrompt,
   AiChatPrompt,
 } from '../lib/prompts';
-import { EPrompts, type IOutgoingMessage, type ParsedMessage } from '../types';
+import { type IOutgoingMessage, type ParsedMessage } from '../types';
 import type { IGetThreadResponse, MailManager } from '../lib/driver/types';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { connectionToDriver } from '../lib/server-utils';
@@ -23,9 +23,7 @@ import { AIChatAgent } from 'agents/ai-chat-agent';
 import { tools as authTools } from './agent/tools';
 import { processToolCalls } from './agent/utils';
 import type { Message as ChatMessage } from 'ai';
-import { getPromptName } from '../pipelines';
 import { connection } from '../db/schema';
-import { getPrompt } from '../lib/brain';
 import { openai } from '@ai-sdk/openai';
 import { FOLDERS } from '../lib/utils';
 import { and, eq } from 'drizzle-orm';
@@ -356,10 +354,7 @@ export class ZeroAgent extends AIChatAgent<typeof env> {
           messages: processedMessages,
           tools,
           onFinish,
-          system: await getPrompt(
-            getPromptName(connectionId, EPrompts.Chat),
-            AiChatPrompt('', '', ''),
-          ),
+          system: AiChatPrompt('', '', ''),
         });
 
         result.mergeIntoDataStream(dataStream);
@@ -1327,30 +1322,6 @@ export class ZeroMCP extends McpAgent<typeof env, {}, { userId: string }> {
             text: `Thread ID: ${s.threadId}`,
           },
         ];
-        const response = await env.VECTORIZE.getByIds([s.threadId]);
-        if (response.length && response?.[0]?.metadata?.['summary']) {
-          const content = response[0].metadata['summary'] as string;
-          const shortResponse = await env.AI.run('@cf/facebook/bart-large-cnn', {
-            input_text: content,
-          });
-          return {
-            content: [
-              ...initialResponse,
-              {
-                type: 'text',
-                text: `Subject: ${thread.latest?.subject}`,
-              },
-              {
-                type: 'text',
-                text: `Long Summary: ${content}`,
-              },
-              {
-                type: 'text',
-                text: `Short Summary: ${shortResponse.summary}`,
-              },
-            ],
-          };
-        }
         return {
           content: initialResponse,
         };

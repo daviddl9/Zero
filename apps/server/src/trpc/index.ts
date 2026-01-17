@@ -11,7 +11,6 @@ import { loggingRouter } from './routes/logging';
 import { draftsRouter } from './routes/drafts';
 import { labelsRouter } from './routes/label';
 import { notesRouter } from './routes/notes';
-import { brainRouter } from './routes/brain';
 import { userRouter } from './routes/user';
 import { meetRouter } from './routes/meet';
 import { mailRouter } from './routes/mail';
@@ -24,7 +23,6 @@ export const appRouter = router({
   ai: aiRouter,
   aiSettings: aiSettingsRouter,
   bimi: bimiRouter,
-  brain: brainRouter,
   categories: categoriesRouter,
   connections: connectionsRouter,
   cookiePreferences: cookiePreferencesRouter,

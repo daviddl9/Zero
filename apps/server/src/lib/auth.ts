@@ -16,7 +16,6 @@ import { getSocialProviders } from './auth-providers';
 import { redis, resend, twilio } from './services';
 import { dubAnalytics } from '@dub/better-auth';
 import { defaultUserSettings } from './schemas';
-import { disableBrainFunction } from './brain';
 import { APIError } from 'better-auth/api';
 import { type EProviders } from '../types';
 import { createDriver } from './driver';
@@ -222,10 +221,6 @@ export const createAuth = () => {
             await Promise.allSettled(
               connections.map(async (connection) => {
                 if (!connection.accessToken || !connection.refreshToken) return false;
-                await disableBrainFunction({
-                  id: connection.id,
-                  providerId: connection.providerId as EProviders,
-                });
                 const driver = createDriver(connection.providerId, {
                   auth: {
                     accessToken: connection.accessToken,

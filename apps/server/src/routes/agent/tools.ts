@@ -1,109 +1,15 @@
 import { getCurrentDateContext, GmailSearchAssistantSystemPrompt } from '../../lib/prompts';
 import { getThread, getZeroAgent } from '../../lib/server-utils';
-import type { IGetThreadResponse } from '../../lib/driver/types';
 import { composeEmail } from '../../trpc/routes/ai/compose';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { SkillsService } from './skills';
 import { colors } from '../../lib/prompts';
 import { openai } from '@ai-sdk/openai';
 import { generateText, tool } from 'ai';
 import { Tools } from '../../types';
+import type { DB } from '../../db';
 import { env } from '../../env';
 import { z } from 'zod';
-
-type ModelTypes = 'summarize' | 'general' | 'chat' | 'vectorize';
-
-const models: Record<ModelTypes, any> = {
-  summarize: '@cf/facebook/bart-large-cnn',
-  general: 'llama-3.3-70b-instruct-fp8-fast',
-  chat: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  vectorize: '@cf/baai/bge-large-en-v1.5',
-};
-
-export const getEmbeddingVector = async (
-  text: string,
-  gatewayId: 'vectorize-save' | 'vectorize-load',
-) => {
-  try {
-    const embeddingResponse = await env.AI.run(
-      models.vectorize,
-      { text },
-      {
-        gateway: {
-          id: gatewayId,
-        },
-      },
-    );
-    const embeddingVector = embeddingResponse.data[0];
-    return embeddingVector ?? null;
-  } catch (error) {
-    console.log('[getEmbeddingVector] failed', error);
-    return null;
-  }
-};
-
-// const askZeroMailbox = (connectionId: string) =>
-//   tool({
-//     description: 'Ask Zero a question about the mailbox',
-//     inputSchema: z.object({
-//       question: z.string().describe('The question to ask Zero'),
-//       topK: z.number().describe('The number of results to return').max(9).min(1).default(3),
-//     }),
-//     execute: async ({ question, topK = 3 }) => {
-//       const embedding = await getEmbeddingVector(question, 'vectorize-load');
-//       if (!embedding) {
-//         return { error: 'Failed to get embedding' };
-//       }
-//       const threadResults = await env.VECTORIZE.query(embedding, {
-//         topK,
-//         returnMetadata: 'all',
-//         filter: {
-//           connection: connectionId,
-//         },
-//       });
-
-//       if (!threadResults.matches.length) {
-//         return {
-//           response: [],
-//           success: false,
-//         };
-//       }
-//       return {
-//         response: threadResults.matches.map((e) => e.metadata?.['summary'] ?? 'no content'),
-//         success: true,
-//       };
-//     },
-//   });
-
-// const askZeroThread = (connectionId: string) =>
-//   tool({
-//     description: 'Ask Zero a question about a specific thread',
-//     inputSchema: z.object({
-//       threadId: z.string().describe('The ID of the thread to ask Zero about'),
-//       question: z.string().describe('The question to ask Zero'),
-//     }),
-//     execute: async ({ threadId, question }) => {
-//       const response = await env.VECTORIZE.getByIds([threadId]);
-//       if (!response.length) return { response: "I don't know, no threads found", success: false };
-//       const embedding = await getEmbeddingVector(question, 'vectorize-load');
-//       if (!embedding) {
-//         return { error: 'Failed to get embedding' };
-//       }
-//       const threadResults = await env.VECTORIZE.query(embedding, {
-//         topK: 1,
-//         returnMetadata: 'all',
-//         filter: {
-//           thread: threadId,
-//           connection: connectionId,
-//         },
-//       });
-//       const topThread = threadResults.matches[0];
-//       if (!topThread) return { response: "I don't know, no threads found", success: false };
-//       return {
-//         response: topThread.metadata?.['summary'] ?? 'no content',
-//         success: true,
-//       };
-//     },
-//   });
 
 /**
  * ⚠️  IMPORTANT
@@ -180,56 +86,18 @@ const getThreadSummary = (connectionId: string) =>
     }),
     execute: async ({ id }) => {
       try {
-        let thread: IGetThreadResponse | null = null;
-        try {
-          const { result } = await getThread(connectionId, id);
-          thread = result;
-        } catch (error) {
-          console.error('[getThreadSummary] Error getting thread', error);
+        const { result: thread } = await getThread(connectionId, id);
+        if (!thread) {
           return { error: 'Thread not found' };
         }
 
-        // Try to get vectorize summary if available
-        let vectorizeResponse: any[] = [];
-        try {
-          vectorizeResponse = await env.VECTORIZE.getByIds([id]);
-        } catch (error) {
-          console.error('[getThreadSummary] VECTORIZE not available:', error);
-          // Continue without vectorize summary
-        }
-
-        if (
-          vectorizeResponse.length &&
-          vectorizeResponse?.[0]?.metadata?.['summary'] &&
-          thread?.latest?.subject
-        ) {
-          const result = vectorizeResponse[0].metadata as { summary: string; connection: string };
-          if (result.connection !== connectionId) {
-            return null;
-          }
-          try {
-            const shortResponse = await env.AI.run('@cf/facebook/bart-large-cnn', {
-              input_text: result.summary,
-            });
-            return {
-              short: shortResponse.summary,
-              subject: thread.latest?.subject,
-              sender: thread.latest?.sender,
-              date: thread.latest?.receivedOn,
-            };
-          } catch (aiError) {
-            console.error('[getThreadSummary] AI summarization failed:', aiError);
-            // Fall through to return basic info
-          }
-        }
-
         return {
-          subject: thread?.latest?.subject,
-          sender: thread?.latest?.sender,
-          date: thread?.latest?.receivedOn,
+          subject: thread.latest?.subject,
+          sender: thread.latest?.sender,
+          date: thread.latest?.receivedOn,
         };
       } catch (error) {
-        console.error('[getThreadSummary] Unexpected error:', error);
+        console.error('[getThreadSummary] Error:', error);
         return { error: 'Failed to get thread summary' };
       }
     },
@@ -744,6 +612,79 @@ export const searchSimilarEmails = (connectionId: string) =>
       }
     },
   });
+
+/**
+ * List all available skills for the user.
+ * Skills are reusable prompt fragments that enhance the AI's capabilities for specific tasks.
+ */
+const listSkills = (skillsService: SkillsService) =>
+  tool({
+    description:
+      'List all available skills. Skills provide specialized instructions for handling specific types of tasks. Use this to discover what skills are available before handling a task.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      try {
+        const skills = await skillsService.listSkillSummaries();
+        if (skills.length === 0) {
+          return { message: 'No skills are currently available.', skills: [] };
+        }
+        return {
+          message: `Found ${skills.length} skill(s) available.`,
+          skills: skills.map((s) => ({
+            id: s.id,
+            name: s.name,
+            description: s.description,
+            category: s.category,
+          })),
+        };
+      } catch (error) {
+        console.error('[listSkills] Error:', error);
+        return { error: 'Failed to list skills', skills: [] };
+      }
+    },
+  });
+
+/**
+ * Read a specific skill's full content/instructions.
+ * Use this when you need to follow a skill's guidance for a task.
+ */
+const readSkill = (skillsService: SkillsService) =>
+  tool({
+    description:
+      "Read a skill's full instructions by its name or ID. Use this after listing skills to get the detailed guidance for handling a specific type of task.",
+    inputSchema: z.object({
+      identifier: z.string().describe('The skill name or ID to read'),
+    }),
+    execute: async ({ identifier }) => {
+      try {
+        const skill = await skillsService.getSkill(identifier);
+        if (!skill) {
+          return { error: `Skill '${identifier}' not found.` };
+        }
+        return {
+          name: skill.name,
+          description: skill.description,
+          category: skill.category,
+          content: skill.content,
+        };
+      } catch (error) {
+        console.error('[readSkill] Error:', error);
+        return { error: `Failed to read skill '${identifier}'` };
+      }
+    },
+  });
+
+/**
+ * Create skill tools that require database access.
+ * These tools allow the AI to discover and use skills defined by the user.
+ */
+export const createSkillTools = (db: DB, userId: string, connectionId?: string) => {
+  const skillsService = new SkillsService(db, userId, connectionId);
+  return {
+    [Tools.ListSkills]: listSkills(skillsService),
+    [Tools.ReadSkill]: readSkill(skillsService),
+  };
+};
 
 export const tools = async (connectionId: string) => {
   return {

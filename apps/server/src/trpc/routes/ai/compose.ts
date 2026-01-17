@@ -10,7 +10,7 @@ import { escapeXml } from '../../../thread-workflow-utils/workflow-utils';
 import { webSearch } from '../../../routes/agent/tools';
 import { activeConnectionProcedure } from '../../trpc';
 import { generateText, generateObject } from 'ai';
-import { getPrompt } from '../../../lib/brain';
+import { getPrompt } from '../../../pipelines.effect';
 import { stripHtml } from 'string-strip-html';
 import { EPrompts } from '../../../types';
 import { openai } from '@ai-sdk/openai';

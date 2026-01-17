@@ -16,16 +16,6 @@
       "ai": {
         "binding": "AI",
       },
-      "vectorize": [
-        {
-          "binding": "VECTORIZE",
-          "index_name": "threads-vector-staging",
-        },
-        {
-          "binding": "VECTORIZE_MESSAGE",
-          "index_name": "messages-vector-staging",
-        },
-      ],
       "r2_buckets": [
         {
           "binding": "THREADS_BUCKET",
@@ -88,18 +78,11 @@
             "binding": "thread_queue",
           },
           {
-            "queue": "subscribe-queue",
-            "binding": "subscribe_queue",
-          },
-          {
             "queue": "send-email-queue",
             "binding": "send_email_queue",
           },
         ],
         "consumers": [
-          {
-            "queue": "subscribe-queue",
-          },
           {
             "queue": "thread-queue",
           },
@@ -193,18 +176,6 @@
           "id": "b7db3a98a80f4e16a8b6edc5fa8c7b76",
         },
         {
-          "binding": "subscribed_accounts",
-          "id": "7e6eadacf19c4c56a9ec3c357adb584a",
-        },
-        {
-          "binding": "connection_labels",
-          "id": "4d3a28d3265a4388aae2e9e9b534d019",
-        },
-        {
-          "binding": "prompts_storage",
-          "id": "620e710aaea744e59df4788f9ec18ff9",
-        },
-        {
           "binding": "gmail_sub_age",
           "id": "c55e692bb71d4e5bae23dded092b09d5",
         },
@@ -240,16 +211,6 @@
       "ai": {
         "binding": "AI",
       },
-      "vectorize": [
-        {
-          "binding": "VECTORIZE",
-          "index_name": "threads-vector-staging",
-        },
-        {
-          "binding": "VECTORIZE_MESSAGE",
-          "index_name": "messages-vector-staging",
-        },
-      ],
       "limits": {
         "cpu_ms": 300000,
       },
@@ -315,18 +276,11 @@
             "binding": "thread_queue",
           },
           {
-            "queue": "subscribe-queue-staging",
-            "binding": "subscribe_queue",
-          },
-          {
             "queue": "send-email-queue-staging",
             "binding": "send_email_queue",
           },
         ],
         "consumers": [
-          {
-            "queue": "subscribe-queue-staging",
-          },
           {
             "queue": "thread-queue-staging",
           },
@@ -414,18 +368,6 @@
           "id": "b7db3a98a80f4e16a8b6edc5fa8c7b76",
         },
         {
-          "binding": "subscribed_accounts",
-          "id": "7e6eadacf19c4c56a9ec3c357adb584a",
-        },
-        {
-          "binding": "connection_labels",
-          "id": "4d3a28d3265a4388aae2e9e9b534d019",
-        },
-        {
-          "binding": "prompts_storage",
-          "id": "620e710aaea744e59df4788f9ec18ff9",
-        },
-        {
           "binding": "gmail_sub_age",
           "id": "c55e692bb71d4e5bae23dded092b09d5",
         },
@@ -467,16 +409,6 @@
       "ai": {
         "binding": "AI",
       },
-      "vectorize": [
-        {
-          "binding": "VECTORIZE",
-          "index_name": "threads-vector",
-        },
-        {
-          "binding": "VECTORIZE_MESSAGE",
-          "index_name": "messages-vector",
-        },
-      ],
       "observability": {
         "enabled": true,
       },
@@ -543,18 +475,11 @@
             "binding": "thread_queue",
           },
           {
-            "queue": "subscribe-queue-prod",
-            "binding": "subscribe_queue",
-          },
-          {
             "queue": "send-email-queue-prod",
             "binding": "send_email_queue",
           },
         ],
         "consumers": [
-          {
-            "queue": "subscribe-queue-prod",
-          },
           {
             "queue": "thread-queue-prod",
           },
@@ -630,18 +555,6 @@
         {
           "binding": "gmail_processing_threads",
           "id": "3348ff0976284269a8d8a5e6e4c04c56",
-        },
-        {
-          "binding": "subscribed_accounts",
-          "id": "5902b3b948ff4c4ba1aedbbbbe25503d",
-        },
-        {
-          "binding": "connection_labels",
-          "id": "9a13290a55ad4f62824c67005dd66f6f",
-        },
-        {
-          "binding": "prompts_storage",
-          "id": "2a4ebda553f3456085cfcf92cc0f570f",
         },
         {
           "binding": "gmail_sub_age",

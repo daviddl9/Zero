@@ -35,7 +35,6 @@ import { ThinkingMCP } from './lib/sequential-thinking';
 import { contextStorage } from 'hono/context-storage';
 import { defaultUserSettings } from './lib/schemas';
 import { createLocalJWKSet, jwtVerify } from 'jose';
-import { enableBrainFunction } from './lib/brain';
 import { trpcServer } from '@hono/trpc-server';
 import { agentsMiddleware } from 'hono-agents';
 import { ZeroMCP } from './routes/agent/mcp';
@@ -1004,22 +1003,8 @@ export default class Entry extends WorkerEntrypoint<ZeroEnv> {
   ) {
     switch (true) {
       case batch.queue.startsWith('subscribe-queue'): {
-        console.log('batch', batch);
-        await Promise.all(
-          batch.messages.map(async (msg: any) => {
-            const connectionId = msg.body.connectionId;
-            const providerId = msg.body.providerId;
-            try {
-              await enableBrainFunction({ id: connectionId, providerId });
-            } catch (error) {
-              console.error(
-                `Failed to enable brain function for connection ${connectionId}:`,
-                error,
-              );
-            }
-          }),
-        );
-        console.log('[SUBSCRIBE_QUEUE] batch done');
+        // Subscribe queue handler - Brain function removed
+        console.log('[SUBSCRIBE_QUEUE] batch received', batch.messages.length, 'messages');
         return;
       }
       case batch.queue.startsWith('send-email-queue'): {

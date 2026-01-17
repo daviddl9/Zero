@@ -84,40 +84,13 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
             ],
           };
         }
-        const response = await env.VECTORIZE.getByIds([s.id]);
         const { result: thread } = await getThread(this.activeConnectionId, s.id);
-        if (response.length && response?.[0]?.metadata?.['summary'] && thread?.latest?.subject) {
-          const result = response[0].metadata as { summary: string; connection: string };
-          if (result.connection !== this.activeConnectionId) {
-            return {
-              content: [
-                {
-                  type: 'text' as const,
-                  text: 'No summary found for this connection',
-                },
-              ],
-            };
-          }
-          const shortResponse = await env.AI.run('@cf/facebook/bart-large-cnn', {
-            input_text: result.summary,
-          });
+        if (!thread?.latest) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: shortResponse.summary as string,
-              },
-              {
-                type: 'text' as const,
-                text: `Subject: ${thread.latest?.subject}`,
-              },
-              {
-                type: 'text' as const,
-                text: `Sender: ${thread.latest?.sender.name} <${thread.latest?.sender.email}>`,
-              },
-              {
-                type: 'text' as const,
-                text: `Date: ${thread.latest?.receivedOn}`,
+                text: 'Thread not found',
               },
             ],
           };
@@ -126,7 +99,15 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
           content: [
             {
               type: 'text' as const,
-              text: 'No summary found',
+              text: `Subject: ${thread.latest.subject}`,
+            },
+            {
+              type: 'text' as const,
+              text: `Sender: ${thread.latest.sender.name} <${thread.latest.sender.email}>`,
+            },
+            {
+              type: 'text' as const,
+              text: `Date: ${thread.latest.receivedOn}`,
             },
           ],
         };
