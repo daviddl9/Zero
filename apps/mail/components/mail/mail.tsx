@@ -464,14 +464,15 @@ export function MailLayout() {
                             </Badge>
                           )} */}
                           {activeFilters.length > 0 && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-6 rounded-md px-2 text-xs"
-                              onClick={handleClearFilters}
+                            <span
+                              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex items-center justify-center cursor-pointer h-6 rounded-md px-2 text-xs font-medium transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleClearFilters(e);
+                              }}
                             >
                               Clear
-                            </Button>
+                            </span>
                           )}
                           <kbd className="bg-muted border-border/40 dark:bg-muted/40 pointer-events-none hidden h-6 select-none items-center gap-1 rounded border px-2 text-xs font-medium opacity-80 sm:flex">
                             <span className={cn('text-xs', isMac ? 'text-sm' : 'text-xs')}>
