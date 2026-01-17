@@ -1027,9 +1027,12 @@ export class GoogleMailManager implements MailManager {
       if (folder === 'draft') {
         return { folder: undefined, q: `is:draft AND (${q})` };
       }
-
       if (folder === 'snoozed') {
         return { folder: undefined, q: `label:Snoozed AND (${q})` };
+      }
+      // "all mail" should search everywhere without folder restriction
+      if (folder === 'all mail' || folder === 'all') {
+        return { folder: undefined, q };
       }
 
       return { folder, q: folder.trim().length ? `in:${folder} ${q}` : q };

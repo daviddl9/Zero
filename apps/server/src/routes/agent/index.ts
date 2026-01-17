@@ -1073,25 +1073,22 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     try {
       console.log(`[inboxRag] Executing AI search with parameters:`, {
         query,
-        max_num_results: 3,
-        score_threshold: 0.3,
-        folder_filter: `${this.name}/`,
+        max_num_results: 15,
+        score_threshold: 0.15,
+        rewrite_query: true,
       });
 
       const answer = await this.env.AI.autorag(this.env.AUTORAG_ID).aiSearch({
         query: query,
-        //   rewrite_query: true,
-        max_num_results: 3,
+        rewrite_query: true,
+        max_num_results: 15,
         ranking_options: {
-          score_threshold: 0.3,
+          score_threshold: 0.15,
         },
-        //   stream: true,
-        filters: {
-          type: 'eq',
-          key: 'folder',
-          value: `${this.name}/`,
-        },
+        // Removed folder filter - was using incorrect path format that returned 0 results
       });
+
+      console.log(`[inboxRag] AutoRAG returned ${answer.data?.length ?? 0} results`);
 
       return { result: answer.response, data: answer.data };
     } catch (error) {
@@ -1155,17 +1152,13 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     if (this.env.AUTORAG_ID) {
       const [ragIds, rawIds] = results;
 
-      // Return InboxRag results if found, otherwise fallback to raw
-      if (ragIds.length > 0) {
-        return {
-          threadIds: ragIds,
-          source: 'autorag' as const,
-        };
-      }
+      // Merge both result sets, deduplicate, RAG results first (they have semantic relevance)
+      const mergedIds = [...new Set([...ragIds, ...rawIds])];
+      const source = ragIds.length > 0 ? (rawIds.length > 0 ? 'combined' : 'autorag') : 'raw';
 
       return {
-        threadIds: rawIds,
-        source: 'raw' as const,
+        threadIds: mergedIds.slice(0, maxResults),
+        source: source as 'combined' | 'autorag' | 'raw',
         nextPageToken: pageToken,
       };
     }
