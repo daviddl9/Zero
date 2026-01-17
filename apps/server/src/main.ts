@@ -14,6 +14,8 @@ import {
   userSettings,
   writingStyleMatrix,
   emailTemplate,
+  skill,
+  skillReference,
 } from './db/schema';
 import {
   toAttachmentFiles,
@@ -202,6 +204,58 @@ export class DbRpcDO extends RpcTarget {
 
   async updateEmailTemplate(templateId: string, data: Partial<typeof emailTemplate.$inferInsert>) {
     return await this.mainDo.updateEmailTemplate(this.userId, templateId, data);
+  }
+
+  async listAllSkills(): Promise<(typeof skill.$inferSelect)[]> {
+    return await this.mainDo.findAllSkills(this.userId);
+  }
+
+  async getSkill(identifier: string): Promise<typeof skill.$inferSelect | null> {
+    return await this.mainDo.findSkill(this.userId, identifier);
+  }
+
+  async createSkill(payload: Omit<typeof skill.$inferInsert, 'userId' | 'id'>): Promise<typeof skill.$inferSelect> {
+    return await this.mainDo.createSkill(this.userId, payload);
+  }
+
+  async updateSkill(
+    skillId: string,
+    data: Partial<Omit<typeof skill.$inferInsert, 'userId' | 'id'>>,
+  ): Promise<typeof skill.$inferSelect | null> {
+    return await this.mainDo.updateSkill(this.userId, skillId, data);
+  }
+
+  async deleteSkill(skillId: string): Promise<boolean> {
+    return await this.mainDo.deleteSkill(this.userId, skillId);
+  }
+
+  async listSkillReferences(skillId: string): Promise<(typeof skillReference.$inferSelect)[]> {
+    return await this.mainDo.findSkillReferences(this.userId, skillId);
+  }
+
+  async getSkillReference(
+    skillId: string,
+    referenceName: string,
+  ): Promise<typeof skillReference.$inferSelect | null> {
+    return await this.mainDo.findSkillReference(this.userId, skillId, referenceName);
+  }
+
+  async createSkillReference(
+    skillId: string,
+    payload: { name: string; content: string; order?: number },
+  ): Promise<typeof skillReference.$inferSelect> {
+    return await this.mainDo.createSkillReference(this.userId, skillId, payload);
+  }
+
+  async updateSkillReference(
+    referenceId: string,
+    data: Partial<{ name: string; content: string; order: number }>,
+  ): Promise<typeof skillReference.$inferSelect | null> {
+    return await this.mainDo.updateSkillReference(this.userId, referenceId, data);
+  }
+
+  async deleteSkillReference(referenceId: string): Promise<boolean> {
+    return await this.mainDo.deleteSkillReference(this.userId, referenceId);
   }
 }
 
@@ -581,6 +635,166 @@ class ZeroDB extends DurableObject<ZeroEnv> {
       .set({ ...data, updatedAt: new Date() })
       .where(and(eq(emailTemplate.id, templateId), eq(emailTemplate.userId, userId)))
       .returning();
+  }
+
+  async findAllSkills(userId: string): Promise<(typeof skill.$inferSelect)[]> {
+    return await this.db.query.skill.findMany({
+      where: eq(skill.userId, userId),
+      orderBy: asc(skill.name),
+    });
+  }
+
+  async findSkill(userId: string, identifier: string): Promise<typeof skill.$inferSelect | null> {
+    // Try by ID first
+    let result = await this.db.query.skill.findFirst({
+      where: eq(skill.id, identifier),
+    });
+
+    if (!result) {
+      // Try by name
+      result = await this.db.query.skill.findFirst({
+        where: and(eq(skill.userId, userId), eq(skill.name, identifier)),
+      });
+    }
+
+    return result ?? null;
+  }
+
+  async createSkill(
+    userId: string,
+    payload: Omit<typeof skill.$inferInsert, 'userId' | 'id'>,
+  ): Promise<typeof skill.$inferSelect> {
+    const now = new Date();
+    const [created] = await this.db
+      .insert(skill)
+      .values({
+        ...payload,
+        id: crypto.randomUUID(),
+        userId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    return created!;
+  }
+
+  async updateSkill(
+    userId: string,
+    skillId: string,
+    data: Partial<Omit<typeof skill.$inferInsert, 'userId' | 'id'>>,
+  ): Promise<typeof skill.$inferSelect | null> {
+    const [updated] = await this.db
+      .update(skill)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(skill.id, skillId), eq(skill.userId, userId)))
+      .returning();
+    return updated ?? null;
+  }
+
+  async deleteSkill(userId: string, skillId: string): Promise<boolean> {
+    const result = await this.db
+      .delete(skill)
+      .where(and(eq(skill.id, skillId), eq(skill.userId, userId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async findSkillReferences(
+    userId: string,
+    skillId: string,
+  ): Promise<(typeof skillReference.$inferSelect)[]> {
+    // First verify the skill belongs to this user
+    const skillRecord = await this.findSkill(userId, skillId);
+    if (!skillRecord) return [];
+
+    return await this.db.query.skillReference.findMany({
+      where: eq(skillReference.skillId, skillId),
+      orderBy: asc(skillReference.order),
+    });
+  }
+
+  async findSkillReference(
+    userId: string,
+    skillId: string,
+    referenceName: string,
+  ): Promise<typeof skillReference.$inferSelect | null> {
+    // First verify the skill belongs to this user
+    const skillRecord = await this.findSkill(userId, skillId);
+    if (!skillRecord) return null;
+
+    const result = await this.db.query.skillReference.findFirst({
+      where: and(
+        eq(skillReference.skillId, skillId),
+        eq(skillReference.name, referenceName),
+      ),
+    });
+    return result ?? null;
+  }
+
+  async createSkillReference(
+    userId: string,
+    skillId: string,
+    payload: { name: string; content: string; order?: number },
+  ): Promise<typeof skillReference.$inferSelect> {
+    // First verify the skill belongs to this user
+    const skillRecord = await this.findSkill(userId, skillId);
+    if (!skillRecord) {
+      throw new Error('Skill not found or access denied');
+    }
+
+    const now = new Date();
+    const [created] = await this.db
+      .insert(skillReference)
+      .values({
+        id: crypto.randomUUID(),
+        skillId,
+        name: payload.name,
+        content: payload.content,
+        order: payload.order ?? 0,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    return created!;
+  }
+
+  async updateSkillReference(
+    userId: string,
+    referenceId: string,
+    data: Partial<{ name: string; content: string; order: number }>,
+  ): Promise<typeof skillReference.$inferSelect | null> {
+    // First get the reference to verify ownership
+    const existing = await this.db.query.skillReference.findFirst({
+      where: eq(skillReference.id, referenceId),
+    });
+    if (!existing) return null;
+
+    // Verify the skill belongs to this user
+    const skillRecord = await this.findSkill(userId, existing.skillId);
+    if (!skillRecord) return null;
+
+    const [updated] = await this.db
+      .update(skillReference)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(skillReference.id, referenceId))
+      .returning();
+    return updated ?? null;
+  }
+
+  async deleteSkillReference(userId: string, referenceId: string): Promise<boolean> {
+    // First get the reference to verify ownership
+    const existing = await this.db.query.skillReference.findFirst({
+      where: eq(skillReference.id, referenceId),
+    });
+    if (!existing) return false;
+
+    // Verify the skill belongs to this user
+    const skillRecord = await this.findSkill(userId, existing.skillId);
+    if (!skillRecord) return false;
+
+    const result = await this.db
+      .delete(skillReference)
+      .where(eq(skillReference.id, referenceId));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

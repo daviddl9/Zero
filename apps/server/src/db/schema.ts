@@ -351,6 +351,26 @@ export const skill = createTable(
   ],
 );
 
+// AI Copilot Skill References - stores reference documents attached to skills
+export const skillReference = createTable(
+  'skill_reference',
+  {
+    id: text('id').primaryKey(),
+    skillId: text('skill_id')
+      .notNull()
+      .references(() => skill.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    content: text('content').notNull(),
+    order: integer('order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('skill_reference_skill_id_idx').on(t.skillId),
+    unique('skill_reference_skill_id_name_unique').on(t.skillId, t.name),
+  ],
+);
+
 // AI Agent Configuration - stores agent persona and guidelines
 export const agentConfig = createTable(
   'agent_config',

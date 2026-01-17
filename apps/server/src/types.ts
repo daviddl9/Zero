@@ -243,6 +243,7 @@ export enum Tools {
   Think = 'think',
   ListSkills = 'listSkills',
   ReadSkill = 'readSkill',
+  ReadSkillReference = 'readSkillReference',
 }
 
 export type AppContext = Context<{ Bindings: Env }>;

@@ -647,11 +647,12 @@ const listSkills = (skillsService: SkillsService) =>
 /**
  * Read a specific skill's full content/instructions.
  * Use this when you need to follow a skill's guidance for a task.
+ * Returns the skill content plus a list of available reference names that can be read with readSkillReference.
  */
 const readSkill = (skillsService: SkillsService) =>
   tool({
     description:
-      "Read a skill's full instructions by its name or ID. Use this after listing skills to get the detailed guidance for handling a specific type of task.",
+      "Read a skill's full instructions by its name or ID. Use this after listing skills to get the detailed guidance for handling a specific type of task. The response includes a list of available reference documents that can be read with the readSkillReference tool.",
     inputSchema: z.object({
       identifier: z.string().describe('The skill name or ID to read'),
     }),
@@ -661,15 +662,48 @@ const readSkill = (skillsService: SkillsService) =>
         if (!skill) {
           return { error: `Skill '${identifier}' not found.` };
         }
+        // Get available reference names
+        const references = await skillsService.getSkillReferenceNames(skill.id);
         return {
+          id: skill.id,
           name: skill.name,
           description: skill.description,
           category: skill.category,
           content: skill.content,
+          references: references.length > 0 ? references : undefined,
         };
       } catch (error) {
         console.error('[readSkill] Error:', error);
         return { error: `Failed to read skill '${identifier}'` };
+      }
+    },
+  });
+
+/**
+ * Read a reference document attached to a skill.
+ * Use this when you need additional context or guidance from a skill's supporting documentation.
+ */
+const readSkillReference = (skillsService: SkillsService) =>
+  tool({
+    description:
+      "Read a reference document attached to a skill. Use this after reading a skill to get supporting documentation like policy guides, templates, or additional context. The skill's response includes available reference names.",
+    inputSchema: z.object({
+      skillId: z.string().describe('The skill ID (returned from readSkill)'),
+      referenceName: z.string().describe('The name of the reference document to read'),
+    }),
+    execute: async ({ skillId, referenceName }) => {
+      try {
+        const reference = await skillsService.getSkillReference(skillId, referenceName);
+        if (!reference) {
+          return { error: `Reference '${referenceName}' not found for skill.` };
+        }
+        return {
+          name: reference.name,
+          content: reference.content,
+        };
+      } catch (error) {
+        console.error('[readSkillReference] Error:', error);
+        return { error: `Failed to read reference '${referenceName}'` };
       }
     },
   });
@@ -683,6 +717,7 @@ export const createSkillTools = (db: DB, userId: string, connectionId?: string) 
   return {
     [Tools.ListSkills]: listSkills(skillsService),
     [Tools.ReadSkill]: readSkill(skillsService),
+    [Tools.ReadSkillReference]: readSkillReference(skillsService),
   };
 };
 

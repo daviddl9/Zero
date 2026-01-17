@@ -47,6 +47,7 @@ export default [
         route('/security', '(routes)/settings/security/page.tsx'),
         route('/shortcuts', '(routes)/settings/shortcuts/page.tsx'),
         route('/ai-model', '(routes)/settings/ai-model/page.tsx'),
+        route('/skills', '(routes)/settings/skills/page.tsx'),
         route('/*', '(routes)/settings/[...settings]/page.tsx'),
       ]),
     ),

@@ -3,8 +3,8 @@
  * Skills are reusable prompt fragments that enhance the AI's capabilities for specific tasks.
  */
 
-import { eq, and, or, isNull } from 'drizzle-orm';
-import { skill } from '../../db/schema';
+import { eq, and, or, isNull, asc } from 'drizzle-orm';
+import { skill, skillReference } from '../../db/schema';
 import type { DB } from '../../db';
 
 export interface Skill {
@@ -25,6 +25,16 @@ export interface SkillSummary {
   name: string;
   description: string | null;
   category: string | null;
+}
+
+export interface SkillReference {
+  id: string;
+  skillId: string;
+  name: string;
+  content: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface CreateSkillInput {
@@ -51,7 +61,7 @@ export class SkillsService {
   ) {}
 
   /**
-   * List all skills available to the user.
+   * List all skills available to the user (enabled only).
    * Returns both user-level skills (connectionId = null) and connection-specific skills.
    */
   async listSkills(): Promise<Skill[]> {
@@ -66,6 +76,20 @@ export class SkillsService {
       .select()
       .from(skill)
       .where(and(conditions, eq(skill.isEnabled, true)));
+
+    return results as Skill[];
+  }
+
+  /**
+   * List all skills for management UI (includes disabled skills).
+   * Returns all user-level skills regardless of enabled status.
+   */
+  async listAllSkills(): Promise<Skill[]> {
+    const results = await this.db
+      .select()
+      .from(skill)
+      .where(eq(skill.userId, this.userId))
+      .orderBy(skill.name);
 
     return results as Skill[];
   }
@@ -178,5 +202,52 @@ export class SkillsService {
 The following skills are available. Use the readSkill tool to load a skill's full instructions when handling a task that matches its description.
 
 ${lines.join('\n')}`;
+  }
+
+  /**
+   * List all references for a skill.
+   */
+  async listSkillReferences(skillId: string): Promise<SkillReference[]> {
+    // Verify the skill belongs to this user
+    const skillRecord = await this.getSkill(skillId);
+    if (!skillRecord) return [];
+
+    const results = await this.db
+      .select()
+      .from(skillReference)
+      .where(eq(skillReference.skillId, skillId))
+      .orderBy(asc(skillReference.order));
+
+    return results as SkillReference[];
+  }
+
+  /**
+   * Get reference names for a skill (for inclusion in readSkill response).
+   */
+  async getSkillReferenceNames(skillId: string): Promise<string[]> {
+    const refs = await this.listSkillReferences(skillId);
+    return refs.map((r) => r.name);
+  }
+
+  /**
+   * Get a specific reference by skill ID and reference name.
+   */
+  async getSkillReference(skillId: string, referenceName: string): Promise<SkillReference | null> {
+    // Verify the skill belongs to this user
+    const skillRecord = await this.getSkill(skillId);
+    if (!skillRecord) return null;
+
+    const result = await this.db
+      .select()
+      .from(skillReference)
+      .where(
+        and(
+          eq(skillReference.skillId, skillId),
+          eq(skillReference.name, referenceName),
+        ),
+      )
+      .limit(1);
+
+    return (result[0] as SkillReference) || null;
   }
 }
