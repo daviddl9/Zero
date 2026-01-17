@@ -25,8 +25,6 @@ import {
 } from './db';
 import {
   convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
   generateText,
   stepCountIs,
   streamText,
@@ -56,15 +54,15 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { getPrompt } from '../../pipelines.effect';
 import { AIChatAgent } from 'agents/ai-chat-agent';
 import { DurableObject } from 'cloudflare:workers';
-import { ToolOrchestrator } from './orchestrator';
 import { eq, desc, isNotNull } from 'drizzle-orm';
 import migrations from './db/drizzle/migrations';
 import { getPromptName } from '../../pipelines';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { connection } from '../../db/schema';
 import type { WSMessage } from 'partyserver';
-import { tools as authTools } from './tools';
-import { processToolCalls } from './utils';
+import { tools as authTools, createSkillTools } from './tools';
+import { AgentConfigService } from './agent-config';
+import { SkillsService } from './skills';
 import { type ZeroEnv } from '../../env';
 import { type Connection } from 'agents';
 import { openai } from '@ai-sdk/openai';
@@ -1841,88 +1839,106 @@ export class ZeroAgent extends AIChatAgent<ZeroEnv> {
     await reSyncThread(this.name, threadId);
   }
 
-  private getDataStreamResponse(
+  /**
+   * Load all available tools for the agent (email, skill, MCP tools)
+   */
+  private async loadTools(connectionId: string): Promise<{ tools: Record<string, any>; systemPromptEnhancement: string }> {
+    const mcpTools = this.mcp.unstable_getAITools();
+    let emailTools = {};
+    let skillTools = {};
+    let systemPromptEnhancement = '';
+
+    // Load email tools
+    try {
+      emailTools = await authTools(connectionId);
+    } catch (error) {
+      console.error('[Agent] Error loading email tools:', error);
+    }
+
+    // Load skill tools and build system prompt enhancement
+    try {
+      const { db: mainDb, conn } = createDb(this.env.DATABASE_URL);
+      try {
+        const connectionResult = await mainDb
+          .select({ userId: connection.userId })
+          .from(connection)
+          .where(eq(connection.id, connectionId))
+          .limit(1);
+
+        if (connectionResult.length > 0) {
+          const userId = connectionResult[0]!.userId;
+          skillTools = createSkillTools(mainDb, userId, connectionId);
+
+          const skillsService = new SkillsService(mainDb, userId, connectionId);
+          const agentConfigService = new AgentConfigService(mainDb, userId);
+          const [agentConfig, skills] = await Promise.all([
+            agentConfigService.getConfig(),
+            skillsService.listSkillSummaries(),
+          ]);
+          systemPromptEnhancement = AgentConfigService.buildEnhancedPrompt('', agentConfig, skills);
+        }
+      } finally {
+        await conn.end();
+      }
+    } catch (error) {
+      console.error('[Agent] Error loading skill tools:', error);
+    }
+
+    return {
+      tools: { ...emailTools, ...skillTools, ...mcpTools },
+      systemPromptEnhancement,
+    };
+  }
+
+  /**
+   * Build the system prompt with context
+   */
+  private async buildSystemPrompt(
+    connectionId: string,
+    currentThreadId: string,
+    currentFolder: string,
+    currentFilter: string,
+    enhancement: string,
+  ): Promise<string> {
+    const basePrompt = await getPrompt(getPromptName(connectionId, EPrompts.Chat), AiChatPrompt(), {
+      currentThreadId,
+      currentFolder,
+      currentFilter,
+    });
+    return basePrompt + enhancement;
+  }
+
+  /**
+   * Generate a streaming chat response using AI SDK v6 patterns
+   */
+  private async getDataStreamResponse(
     onFinish: StreamTextOnFinishCallback<{}>,
     currentThreadId: string,
     currentFolder: string,
     currentFilter: string,
   ) {
-    const stream = createUIMessageStream({
-      execute: async ({ writer }: { writer: any }) => {
-        if (this.name === 'general') return;
-        const connectionId = this.name;
-        const orchestrator = new ToolOrchestrator(writer, connectionId);
+    if (this.name === 'general') return undefined;
 
-        const mcpTools = this.mcp.unstable_getAITools();
-        console.log('[Agent] MCP tools:', Object.keys(mcpTools));
+    const connectionId = this.name;
+    const { tools, systemPromptEnhancement } = await this.loadTools(connectionId);
+    const system = await this.buildSystemPrompt(connectionId, currentThreadId, currentFolder, currentFilter, systemPromptEnhancement);
 
-        let emailTools = {};
-        try {
-          emailTools = await authTools(connectionId);
-          console.log('[Agent] Email tools loaded:', Object.keys(emailTools));
-        } catch (error) {
-          console.error('[Agent] Error loading email tools:', error);
-        }
+    // AI SDK v6: Use streamText with toUIMessageStreamResponse() for clean streaming
+    const google = createGoogleGenerativeAI({ apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY });
 
-        const rawTools = {
-          ...emailTools,
-          ...mcpTools,
-        };
-        console.log('[Agent] Raw tools combined:', Object.keys(rawTools));
-
-        const tools = orchestrator.processTools(rawTools);
-        console.log('[Agent] Available tools:', Object.keys(tools));
-
-        const processedMessages = await processToolCalls(
-          {
-            messages: this.messages as UIMessage[],
-            writer,
-            tools,
-          },
-          {},
-        );
-        console.log('[Agent] Processed messages count:', processedMessages.length);
-
-        // Use Gemini as the default model - must explicitly pass API key in Cloudflare Workers
-        const google = createGoogleGenerativeAI({ apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY });
-        const model = google('gemini-3-flash-preview');
-        console.log('[Agent] Starting streamText with Gemini 3...');
-
-        const result = streamText({
-          model,
-          stopWhen: stepCountIs(10), // Enable multi-step tool calling (up to 10 steps)
-          messages: await convertToModelMessages(processedMessages),
-          tools,
-          onFinish,
-          onError: (error) => {
-            console.error('Error in streamText', error);
-          },
-          onStepFinish: (step) => {
-            const toolNames = (step.toolCalls as any[])?.map((t: any) => t.toolName).join(',') || 'none';
-            console.log(`[Agent Step] reason=${step.finishReason}, tools=${toolNames}, hasText=${!!step.text}`);
-            if ((step.toolCalls as any[])?.length) {
-              (step.toolCalls as any[]).forEach((tc: any) => {
-                console.log(`  -> Tool: ${tc.toolName}`, JSON.stringify(tc.args).substring(0, 100));
-              });
-            }
-            if ((step.toolResults as any[])?.length) {
-              (step.toolResults as any[]).forEach((tr: any) => {
-                console.log(`  <- Result: ${tr.toolName}`, JSON.stringify(tr.result).substring(0, 150));
-              });
-            }
-          },
-          system: await getPrompt(getPromptName(connectionId, EPrompts.Chat), AiChatPrompt(), {
-            currentThreadId,
-            currentFolder,
-            currentFilter,
-          }),
-        });
-
-        writer.merge((result as any).toUIMessageStream());
+    const result = streamText({
+      model: google('gemini-3-flash-preview'),
+      messages: await convertToModelMessages(this.messages as UIMessage[]),
+      tools,
+      system,
+      stopWhen: stepCountIs(10),
+      onFinish,
+      onError: ({ error }) => {
+        console.error('[Agent] Stream error:', error);
       },
     });
 
-    return createUIMessageStreamResponse({ stream });
+    return result.toUIMessageStreamResponse();
   }
 
   private async tryCatchChat<T>(fn: () => T | Promise<T>) {

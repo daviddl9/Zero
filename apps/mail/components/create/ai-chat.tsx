@@ -199,9 +199,8 @@ const ToolResponse = ({ toolName, result, args }: { toolName: string; result: an
 
 export function AIChat({
   messages,
-  setInput,
+  sendMessage,
   error,
-  handleSubmit,
   status,
   showDevTools,
 }: ReturnType<typeof useAgentChat> & { showDevTools?: boolean }): React.ReactElement {
@@ -229,7 +228,7 @@ export function AIChat({
 
   const editor = useComposeEditor({
     placeholder: 'Ask Zero to do anything...',
-    onLengthChange: () => setInput(editor.getText()),
+    onLengthChange: () => {},
     onKeydown(event) {
       if (event.key === '0' && event.metaKey) {
         return toggleOpen();
@@ -243,7 +242,10 @@ export function AIChat({
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    handleSubmit(e);
+    const text = editor.getText().trim();
+    if (!text) return;
+
+    await sendMessage({ text });
     editor.commands.clearContent(true);
     setTimeout(() => {
       scrollToBottom();
@@ -252,7 +254,6 @@ export function AIChat({
 
   const handleQueryClick = (query: string) => {
     editor.commands.setContent(query);
-    setInput(query);
     editor.commands.focus();
   };
 

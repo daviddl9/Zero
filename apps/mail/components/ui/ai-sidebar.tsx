@@ -13,7 +13,6 @@ import { Tools } from '../../../server/src/types';
 import { useDevMode } from '@/hooks/use-dev-mode';
 import { useDoState } from '../mail/use-do-state';
 import { useBilling } from '@/hooks/use-billing';
-import { PromptsDialog } from './prompts-dialog';
 import { Button } from '@/components/ui/button';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useLabels } from '@/hooks/use-labels';
@@ -147,8 +146,6 @@ function ChatHeader({
             </Tooltip>
           </TooltipProvider>
         )}
-
-        <PromptsDialog />
 
         <TooltipProvider delayDuration={0}>
           <Tooltip>
