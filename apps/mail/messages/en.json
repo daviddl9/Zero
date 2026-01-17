@@ -634,7 +634,7 @@
         "contentLabel": "Skill Instructions",
         "contentPlaceholder": "Enter the instructions and prompts for this skill...",
         "contentHelp": "These instructions will be available to the AI copilot when this skill is invoked.",
-        "contentHelpCreate": "Use YAML frontmatter (---) with name/description fields, or start with a markdown heading.",
+        "contentHelpCreate": "Use YAML frontmatter (---) with name and description fields.",
         "confirmSkill": "Confirm Skill",
         "confirmSkillDescription": "Review the parsed skill details before saving.",
         "continue": "Continue",
