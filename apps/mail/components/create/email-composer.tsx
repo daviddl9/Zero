@@ -247,6 +247,15 @@ export function EmailComposer({
   const attachments = watch('attachments');
   const fromEmail = watch('fromEmail');
 
+  // Update form values when initial props change (e.g., when replying/replyAll calculates recipients)
+  useEffect(() => {
+    if (initialTo.length > 0 || initialCc.length > 0 || initialSubject) {
+      setValue('to', initialTo, { shouldDirty: false });
+      setValue('cc', initialCc, { shouldDirty: false });
+      setValue('subject', initialSubject, { shouldDirty: false });
+    }
+  }, [initialTo, initialCc, initialSubject, setValue]);
+
   const handleAttachment = async (newFiles: File[]) => {
     if (newFiles && newFiles.length > 0) {
       const newOriginals = [...originalAttachments, ...newFiles];
