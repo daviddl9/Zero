@@ -15,7 +15,7 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
     - [x] Implement `DraftingAgent` using `google-generative-ai` provider and AI SDK 6 ReAct patterns. 10f6fd5
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Agent Foundation & Tooling' (Protocol in workflow.md) 8f7ff86
 
-## Phase 2: Core Drafting Logic
+## Phase 2: Core Drafting Logic [checkpoint: b07399c]
 *Focus: Implementing the logic to process context, generate reasoning, and produce two drafts.*
 
 - [x] Task: Implement context processing for empty vs. non-empty compose window 6fabbd8
@@ -27,7 +27,7 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
 - [x] Task: Create tRPC endpoint for agent invocation 170663d
     - [x] Write integration tests for the tRPC route `agent.generateDrafts` 170663d
     - [x] Implement the tRPC route in `apps/server/src/trpc/routes/ai/agent.ts` 170663d
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Core Drafting Logic' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Core Drafting Logic' (Protocol in workflow.md) b07399c
 
 ## Phase 3: UI & Transparency
 *Focus: Building the frontend components to show the agent's thought process and the draft selection modal.*
