@@ -12,7 +12,7 @@ Zero provides the privacy and control of a self-hosted solution combined with th
 
 ## Key Features
 - **Core Email Management:** Full suite of functionality for sending, receiving, and organizing emails.
-- **AI-Powered Intelligence:** Integration of Agents and LLMs for summarization, smart replies, and proactive assistance.
+- **AI-Powered Intelligence:** Integration of Agents and LLMs for summarization, smart replies, proactive assistance, and autonomous email drafting.
 - **Unified Inbox:** A single interface to manage multiple providers including Gmail and Outlook.
 - **Self-Hosting First:** Designed for easy deployment and management on private infrastructure.
 - **Extensible API:** A robust developer API and plugin system for building custom integrations.

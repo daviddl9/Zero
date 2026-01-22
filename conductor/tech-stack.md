@@ -13,6 +13,7 @@
 - **API Framework:** Hono
 - **Communication:** tRPC (for type-safe client-server communication)
 - **ORM:** Drizzle ORM
+- **AI:** Vercel AI SDK v6, Google Gemini Models
 - **Database:** PostgreSQL (Self-hosted or managed)
 - **Task Management:** Cloudflare Durable Objects, R2 (storage)
 
