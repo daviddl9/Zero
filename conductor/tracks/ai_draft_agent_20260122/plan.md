@@ -24,9 +24,9 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
 - [x] Task: Implement two-draft generation logic 6fabbd8
     - [x] Write tests to ensure the agent returns exactly two distinct drafts in a structured format (JSON) 6fabbd8
     - [x] Implement few-shot style replication in the agent prompt 6fabbd8
-- [ ] Task: Create tRPC endpoint for agent invocation
-    - [ ] Write integration tests for the tRPC route `agent.generateDrafts`
-    - [ ] Implement the tRPC route in `apps/server/src/trpc/routes/ai/agent.ts`
+- [x] Task: Create tRPC endpoint for agent invocation 170663d
+    - [x] Write integration tests for the tRPC route `agent.generateDrafts` 170663d
+    - [x] Implement the tRPC route in `apps/server/src/trpc/routes/ai/agent.ts` 170663d
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Core Drafting Logic' (Protocol in workflow.md)
 
 ## Phase 3: UI & Transparency
