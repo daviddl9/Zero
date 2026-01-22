@@ -1,8 +1,0 @@
-{
-  "track_id": "ai_draft_agent_20260122",
-  "type": "feature",
-  "status": "new",
-  "created_at": "2026-01-22T12:00:00Z",
-  "updated_at": "2026-01-22T12:00:00Z",
-  "description": "can you add the ability to generate a reply even when the compose textbox is empty. it should use a react agent (with tools and look up my past emails to this person to understand my writing style), reason through it and come up with 2 drafts. it should show it's thought process and tool use while loading, so the users can understand what's going on under the hood"
-}

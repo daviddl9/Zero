@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Loader2 } from 'lucide-react';
 

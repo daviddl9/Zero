@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { searchPastEmails, checkCalendar } from './agent-tools';
+import { searchPastEmails } from './agent-tools';
 
 // Mock server-utils
 vi.mock('../lib/server-utils', () => {
@@ -35,20 +35,17 @@ vi.mock('../lib/server-utils', () => {
 describe('Agent Tools', () => {
   describe('searchPastEmails', () => {
     it('should return a structured list of emails', async () => {
-        const emails = await searchPastEmails('recipient@example.com', 'conn-1');
-        
-        expect(Array.isArray(emails)).toBe(true);
-        expect(emails.length).toBeGreaterThan(0);
-        expect(emails[0].subject).toBe('Hello');
-        expect(emails[0].direction).toBe('sent');
-    });
-  });
+      const emails = await searchPastEmails('recipient@example.com', 'conn-1', 'me@example.com');
 
-  describe('checkCalendar', () => {
-    it('should return a status string', async () => {
-        const result = await checkCalendar('2023-10-27');
-        expect(typeof result).toBe('string');
-        expect(result).toContain('Calendar integration');
+      expect(Array.isArray(emails)).toBe(true);
+      expect(emails.length).toBeGreaterThan(0);
+      expect(emails[0].subject).toBe('Hello');
+      expect(emails[0].direction).toBe('sent');
+    });
+
+    it('should mark emails FROM recipient as received', async () => {
+      const emails = await searchPastEmails('me@example.com', 'conn-1', 'other@example.com');
+      expect(emails[0].direction).toBe('received');
     });
   });
 });

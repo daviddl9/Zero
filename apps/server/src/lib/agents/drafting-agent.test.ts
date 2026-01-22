@@ -43,6 +43,7 @@ describe('DraftingAgent', () => {
     expect(generateText).toHaveBeenCalled();
     expect(drafts).toBeDefined();
     expect(drafts.drafts).toHaveLength(2);
+    expect(Array.isArray(drafts.steps)).toBe(true);
   });
 
   it('should handle invalid JSON response gracefully', async () => {
@@ -63,6 +64,7 @@ describe('DraftingAgent', () => {
 
     expect(result.drafts).toHaveLength(2);
     expect(result.drafts[0]).toBe('Not valid JSON');
+    expect(Array.isArray(result.steps)).toBe(true);
   });
 
   it('should construct prompt with user points when provided', async () => {
