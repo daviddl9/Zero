@@ -43,9 +43,9 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
 ## Phase 4: Integration & Refinement
 *Focus: Connecting the agent to the Compose window and polishing the user experience.*
 
-- [ ] Task: Integrate AI Agent trigger in `ComposeEditor`
-    - [ ] Write integration tests for the "Draft with AI" flow
-    - [ ] Update `apps/mail/hooks/use-compose-editor.ts` and `apps/mail/components/mail/compose-editor.tsx` to include the AI trigger and handle agent responses
+- [x] Task: Integrate AI Agent trigger in `ComposeEditor` 5adb92e
+    - [x] Write integration tests for the "Draft with AI" flow 5adb92e
+    - [x] Update `apps/mail/hooks/use-compose-editor.ts` and `apps/mail/components/mail/compose-editor.tsx` to include the AI trigger and handle agent responses 5adb92e
 - [ ] Task: Final Polish & Style Matching
     - [ ] Refine few-shot examples based on realistic email data
     - [ ] Ensure the "Thinking" UI provides clear feedback for all tool uses
