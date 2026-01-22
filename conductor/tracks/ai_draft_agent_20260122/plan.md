@@ -18,12 +18,12 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
 ## Phase 2: Core Drafting Logic
 *Focus: Implementing the logic to process context, generate reasoning, and produce two drafts.*
 
-- [ ] Task: Implement context processing for empty vs. non-empty compose window
-    - [ ] Write tests for prompt construction logic
-    - [ ] Implement context-aware prompt generation in `DraftingAgent`
-- [ ] Task: Implement two-draft generation logic
-    - [ ] Write tests to ensure the agent returns exactly two distinct drafts in a structured format (JSON)
-    - [ ] Implement few-shot style replication in the agent prompt
+- [x] Task: Implement context processing for empty vs. non-empty compose window 6fabbd8
+    - [x] Write tests for prompt construction logic 6fabbd8
+    - [x] Implement context-aware prompt generation in `DraftingAgent` 6fabbd8
+- [x] Task: Implement two-draft generation logic 6fabbd8
+    - [x] Write tests to ensure the agent returns exactly two distinct drafts in a structured format (JSON) 6fabbd8
+    - [x] Implement few-shot style replication in the agent prompt 6fabbd8
 - [ ] Task: Create tRPC endpoint for agent invocation
     - [ ] Write integration tests for the tRPC route `agent.generateDrafts`
     - [ ] Implement the tRPC route in `apps/server/src/trpc/routes/ai/agent.ts`
