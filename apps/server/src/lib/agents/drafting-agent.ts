@@ -14,6 +14,7 @@ export class DraftingAgent {
   ) {}
 
     async generateDrafts(context: { recipientEmail?: string, userPoints?: string }) {
+        const steps: string[] = [];
         const tools = {
             search_past_emails: tool({
                 description: 'Search past emails with the recipient to understand context and writing style',
@@ -22,6 +23,7 @@ export class DraftingAgent {
                 }),
                 execute: async ({ recipientEmail }) => {
                     try {
+                        steps.push(`Searching past emails with ${recipientEmail}...`);
                         return await searchPastEmails(recipientEmail, this.connectionId, this.userEmail);
                     } catch (error) {
                         console.error('[search_past_emails] Tool failed:', error);
@@ -35,6 +37,11 @@ export class DraftingAgent {
             model: google('gemini-2.0-flash'),
             tools,
             maxSteps: 5,
+            onStepFinish: (step) => {
+                if (step.text) {
+                    steps.push(step.text);
+                }
+            },
             system: `You are an expert email drafting assistant. 
             Your goal is to draft 2 distinct email options for the user.
             
@@ -49,6 +56,11 @@ export class DraftingAgent {
                - Option 1: Draft for Course of Action A.
                - Option 2: Draft for Course of Action B.
             
+            STYLE REPLICATION:
+            - Closely examine 'direction: sent' emails in the search results. These represent the user's voice.
+            - Mimic the user's vocabulary, formatting habits (e.g., lowercase-only, heavy use of bullet points), and typical email length.
+            - If no sent emails are found, default to a professional yet concise tone.
+            
             If userPoints are provided, prioritize them but still maintain the user's inferred writing style.
             
             You must output the final result as a JSON object with a 'drafts' array containing exactly 2 strings.
@@ -60,10 +72,11 @@ export class DraftingAgent {
         try {
             const cleanText = result.text.replace(/```json\n?|\n?```/g, '').trim();
             const parsed = JSON.parse(cleanText);
-            return DraftsResponseSchema.parse(parsed);
+            const validated = DraftsResponseSchema.parse(parsed);
+            return { ...validated, steps };
         } catch (error) {
             console.error('[DraftingAgent] Failed to parse response:', result.text, error);
-            return { drafts: [result.text.trim(), result.text.trim()] };
+            return { drafts: [result.text.trim(), result.text.trim()], steps };
         }
     }
 }
