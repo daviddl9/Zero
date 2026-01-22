@@ -5,11 +5,11 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
 ## Phase 1: Agent Foundation & Tooling
 *Focus: Setting up the ReAct agent structure and the necessary tools for searching history and checking calendar.*
 
-- [ ] Task: Create `search_past_emails` and `check_calendar` tools
-    - [ ] Write unit tests for `search_past_emails` (mocking database/Gmail API)
-    - [ ] Implement `search_past_emails` in `apps/server/src/services/agent-tools.ts`
-    - [ ] Write unit tests for `check_calendar`
-    - [ ] Implement `check_calendar` in `apps/server/src/services/agent-tools.ts`
+- [x] Task: Create `search_past_emails` and `check_calendar` tools d91ea1f
+    - [x] Write unit tests for `search_past_emails` (mocking database/Gmail API) d91ea1f
+    - [x] Implement `search_past_emails` in `apps/server/src/services/agent-tools.ts` d91ea1f
+    - [x] Write unit tests for `check_calendar` d91ea1f
+    - [x] Implement `check_calendar` in `apps/server/src/services/agent-tools.ts` d91ea1f
 - [ ] Task: Initialize ReAct Agent with AI SDK 6 & Gemini
     - [ ] Write unit tests for Agent reasoning loop using `generateText` or `streamText` from AI SDK 6
     - [ ] Implement `DraftingAgent` using `google-generative-ai` provider and AI SDK 6 ReAct patterns.
