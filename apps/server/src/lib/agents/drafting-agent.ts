@@ -34,7 +34,7 @@ export class DraftingAgent {
         };
 
         const result = await generateText({
-            model: google('gemini-2.0-flash'),
+            model: google('gemini-3-flash-preview'),
             tools,
             maxSteps: 5,
             onStepFinish: (step) => {
