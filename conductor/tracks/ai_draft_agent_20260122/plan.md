@@ -29,7 +29,7 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
     - [x] Implement the tRPC route in `apps/server/src/trpc/routes/ai/agent.ts` 170663d
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Core Drafting Logic' (Protocol in workflow.md) b07399c
 
-## Phase 3: UI & Transparency
+## Phase 3: UI & Transparency [checkpoint: efa3bc2]
 *Focus: Building the frontend components to show the agent's thought process and the draft selection modal.*
 
 - [x] Task: Create `AgentThinkingAccordion` component f56c2fd
@@ -38,7 +38,7 @@ This plan outlines the steps to implement an AI React Agent for email drafting w
 - [x] Task: Create `DraftSelectionModal` component 8d39ee0
     - [x] Write unit tests for the selection and preview logic 8d39ee0
     - [x] Implement the component in `apps/mail/components/mail/draft-selection-modal.tsx` 8d39ee0
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: UI & Transparency' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 3: UI & Transparency' (Protocol in workflow.md) efa3bc2
 
 ## Phase 4: Integration & Refinement
 *Focus: Connecting the agent to the Compose window and polishing the user experience.*
