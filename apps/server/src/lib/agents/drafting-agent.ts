@@ -44,9 +44,10 @@ export class DraftingAgent {
                - Tone (formal, casual, etc.)
                - Greeting and sign-off style
                - Typical sentence structure and length
-            3. Draft 2 distinct options:
-               - Option 1: A direct response/draft based on the most likely next step.
-               - Option 2: A slightly different approach or tone (e.g., more detailed or more concise).
+            3. Determine the 2 most logical next courses of action based on the context (e.g., Accept vs. Decline, Answer Question vs. Ask for Clarification, Propose Time A vs. Propose Time B).
+            4. Draft 2 distinct options corresponding to these courses of action:
+               - Option 1: Draft for Course of Action A.
+               - Option 2: Draft for Course of Action B.
             
             If userPoints are provided, prioritize them but still maintain the user's inferred writing style.
             
