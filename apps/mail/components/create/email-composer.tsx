@@ -17,7 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Check, Command, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextEffect } from '@/components/motion-primitives/text-effect';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
 import { ScheduleSendPicker } from './schedule-send-picker';
@@ -32,7 +32,6 @@ import { useMutation } from '@tanstack/react-query';
 import { useSettings } from '@/hooks/use-settings';
 
 import { cn, formatFileSize } from '@/lib/utils';
-import { useThread } from '@/hooks/use-threads';
 import { serializeFiles } from '@/lib/schemas';
 import { Input } from '@/components/ui/input';
 import { EditorContent } from '@tiptap/react';
@@ -49,17 +48,10 @@ import { ImageCompressionSettings } from './image-compression-settings';
 import { DraftSelector, type Draft } from './draft-selector';
 import type { ImageQuality } from '@/lib/image-compression';
 import { compressImages } from '@/lib/image-compression';
+import { AgentThinkingAccordion } from '../mail/ai-thinking-accordion';
 
 const shortcodeRegex = /:([a-zA-Z0-9_+-]+):/g;
 import { TemplateButton } from './template-button';
-
-type ThreadContent = {
-  from: string;
-  to: string[];
-  body: string;
-  cc?: string[];
-  subject: string;
-}[];
 
 interface EmailComposerProps {
   initialTo?: string[];
@@ -123,11 +115,12 @@ export function EmailComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [threadId] = useQueryState('threadId');
   const [isComposeOpen, setIsComposeOpen] = useQueryState('isComposeOpen');
-  const { data: emailData } = useThread(threadId ?? null);
   const [draftId, setDraftId] = useQueryState('draftId');
   const [aiGeneratedMessage, setAiGeneratedMessage] = useState<string | null>(null);
   const [generatedDrafts, setGeneratedDrafts] = useState<Draft[] | null>(null);
   const [aiIsLoading, setAiIsLoading] = useState(false);
+  const [agentSteps, setAgentSteps] = useState<string[]>([]);
+  const [agentIsThinking, setAgentIsThinking] = useState(false);
   const [isGeneratingSubject, setIsGeneratingSubject] = useState(false);
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [scheduleAt, setScheduleAt] = useState<string>();
@@ -216,7 +209,9 @@ export function EmailComposer({
   ];
 
   const trpc = useTRPC();
-  const { mutateAsync: aiCompose } = useMutation(trpc.ai.compose.mutationOptions());
+  const { mutateAsync: agentGenerateDrafts } = useMutation(
+    trpc.ai.agent.generateDrafts.mutationOptions(),
+  );
   const { mutateAsync: createDraft } = useMutation(trpc.drafts.create.mutationOptions());
   const { mutateAsync: generateEmailSubject } = useMutation(
     trpc.ai.generateEmailSubject.mutationOptions(),
@@ -402,51 +397,35 @@ export function EmailComposer({
     await proceedWithSend();
   };
 
-  const threadContent: ThreadContent = useMemo(() => {
-    if (!emailData) return [];
-    return emailData.messages.map((message) => {
-      return {
-        body: message.decodedBody ?? '',
-        from: message.sender.name ?? message.sender.email,
-        to: message.to.reduce<string[]>((to, recipient) => {
-          if (recipient.name) {
-            to.push(recipient.name);
-          }
-          return to;
-        }, []),
-        cc: message.cc?.reduce<string[]>((cc, recipient) => {
-          if (recipient.name) {
-            cc.push(recipient.name);
-          }
-          return cc;
-        }, []),
-        subject: message.subject,
-      };
-    });
-  }, [emailData]);
-
   const handleAiGenerate = async () => {
     try {
       setIsLoading(true);
       setAiIsLoading(true);
+      setAgentIsThinking(true);
+      setAgentSteps([]);
       const values = getValues();
 
-      const result = await aiCompose({
-        prompt: editor.getText(),
-        emailSubject: values.subject,
-        to: values.to,
-        cc: values.cc,
-        threadMessages: threadContent,
-        generateMultipleDrafts: true,
+      const result = await agentGenerateDrafts({
+        recipientEmail: values.to[0],
+        userPoints: editor.getText(),
       });
+
+      if (result.steps) {
+        setAgentSteps(result.steps);
+      }
 
       // If we have multiple drafts, show the draft selector
       if (result.drafts && result.drafts.length > 1) {
-        setGeneratedDrafts(result.drafts);
+        const drafts: Draft[] = result.drafts.map((body, index) => ({
+          id: `ai-${index}`,
+          body,
+          approach: index === 0 ? 'Response Option A' : 'Response Option B',
+        }));
+        setGeneratedDrafts(drafts);
         setAiGeneratedMessage(null);
       } else {
         // Fall back to single draft behavior
-        setAiGeneratedMessage(result.drafts?.[0]?.body || result.newBody);
+        setAiGeneratedMessage(result.drafts?.[0] || '');
         setGeneratedDrafts(null);
       }
     } catch (error) {
@@ -455,6 +434,7 @@ export function EmailComposer({
     } finally {
       setIsLoading(false);
       setAiIsLoading(false);
+      setAgentIsThinking(false);
     }
   };
 
@@ -785,6 +765,7 @@ export function EmailComposer({
 
         {/* Message Content */}
         <div className="flex-1 overflow-y-auto border-t bg-[#FFFFFF] px-3 py-3 outline-white/5 dark:bg-[#202020]">
+          <AgentThinkingAccordion steps={agentSteps} isThinking={agentIsThinking} />
           <div
             onClick={() => {
               editor.commands.focus();
