@@ -1,0 +1,100 @@
+# ========================================
+# Miniflare Backend for Raspberry Pi
+# ========================================
+# Runs Cloudflare Workers code locally using Miniflare
+# Supports Durable Objects, KV, Queues, R2 with local persistence
+
+FROM node:22-alpine AS base
+
+# Install dependencies for native modules
+RUN apk add --no-cache libc6-compat python3 make g++
+
+# ========================================
+# Dependencies Stage
+# ========================================
+FROM base AS deps
+WORKDIR /app
+
+RUN npm install -g pnpm
+
+# Copy workspace configuration
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/server/package.json ./apps/server/
+COPY apps/mail/package.json ./apps/mail/
+COPY packages/ ./packages/
+COPY patches/ ./patches/
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
+
+# ========================================
+# Builder Stage
+# ========================================
+FROM base AS builder
+WORKDIR /app
+
+RUN npm install -g pnpm
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=deps /app/turbo.json ./turbo.json
+
+# Copy source code
+COPY apps/ ./apps/
+COPY packages/ ./packages/
+COPY patches/ ./patches/
+
+# Install dependencies in apps
+RUN pnpm install --frozen-lockfile
+
+# ========================================
+# Runner Stage
+# ========================================
+FROM base AS runner
+WORKDIR /app
+
+# Install wrangler globally for Miniflare
+RUN npm install -g pnpm wrangler
+
+# Create non-root user
+RUN addgroup -S -g 1001 zero && \
+    adduser -S -u 1001 zero -G zero
+
+# Copy workspace configuration
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /app/turbo.json ./turbo.json
+
+# Copy server app
+COPY --from=builder /app/apps/server ./apps/server
+COPY --from=builder /app/packages ./packages
+
+# Copy Pi-specific wrangler config
+COPY wrangler.pi.toml ./apps/server/wrangler.toml
+
+# Create persistence directories for Miniflare
+RUN mkdir -p /app/data/durable-objects \
+             /app/data/kv \
+             /app/data/r2 \
+             /app/data/d1 \
+             /app/data/cache && \
+    chown -R zero:zero /app
+
+USER zero
+
+WORKDIR /app/apps/server
+
+# Expose backend port
+EXPOSE 8787
+
+# Environment variables for local development
+ENV NODE_ENV=production \
+    PORT=8787
+
+# Start the backend using wrangler dev (Miniflare)
+# The --local flag ensures all Cloudflare services are simulated locally
+CMD ["wrangler", "dev", "--port", "8787", "--host", "0.0.0.0", "--local", "--persist-to", "/app/data"]

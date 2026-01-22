@@ -1,0 +1,52 @@
+# Zero Email - Systemd Service for Raspberry Pi
+#
+# This service file enables Zero Email to start automatically on boot.
+#
+# Installation:
+#   sudo cp ~/zero/scripts/pi/zero.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable zero.service
+#   sudo systemctl start zero.service
+#
+# Management:
+#   sudo systemctl status zero.service
+#   sudo systemctl stop zero.service
+#   sudo systemctl restart zero.service
+#   sudo journalctl -u zero.service -f
+
+[Unit]
+Description=Zero Email - Self-hosted email client
+Documentation=https://github.com/zerodotemail/zero
+After=docker.service
+Requires=docker.service
+# Wait for network to be available
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/zero
+
+# Start services
+ExecStart=/usr/bin/docker compose -f docker-compose.pi.yaml up -d
+
+# Stop services gracefully
+ExecStop=/usr/bin/docker compose -f docker-compose.pi.yaml down
+
+# Restart policy
+Restart=on-failure
+RestartSec=30
+
+# Environment
+Environment=COMPOSE_HTTP_TIMEOUT=300
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zero-email
+
+[Install]
+WantedBy=multi-user.target

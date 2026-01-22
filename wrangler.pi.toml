@@ -1,0 +1,167 @@
+# Zero Email - Raspberry Pi Wrangler Configuration
+# This config is used by Miniflare to run the backend locally
+#
+# All Cloudflare services are simulated locally:
+# - Durable Objects -> SQLite-backed persistence
+# - KV Namespaces -> File-backed storage
+# - Queues -> Local simulation
+# - R2 -> Local file storage
+
+name = "zero-server-pi"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+main = "src/main.ts"
+
+# Enable local persistence for all bindings
+# Data will be stored in /app/data (mounted as Docker volume)
+
+[vars]
+NODE_ENV = "production"
+COOKIE_DOMAIN = "raspberrypi.local"
+VITE_PUBLIC_BACKEND_URL = "http://raspberrypi.local:3000/api"
+VITE_PUBLIC_APP_URL = "http://raspberrypi.local:3000"
+JWT_SECRET = "change-me-in-production"
+DISABLE_CALLS = "true"
+DROP_AGENT_TABLES = "false"
+THREAD_SYNC_MAX_COUNT = "60"
+THREAD_SYNC_LOOP = "false"
+DISABLE_WORKFLOWS = "true"
+USE_OPENAI = "true"
+# These will be overridden by environment variables
+GOOGLE_S_ACCOUNT = "{}"
+AUTORAG_ID = ""
+CLOUDFLARE_ACCOUNT_ID = ""
+CLOUDFLARE_API_TOKEN = ""
+MEET_AUTH_HEADER = ""
+OTEL_EXPORTER_OTLP_ENDPOINT = ""
+OTEL_SERVICE_NAME = "zero-email-server-pi"
+DD_API_KEY = ""
+DD_APP_KEY = ""
+DD_SITE = ""
+ELEVENLABS_API_KEY = ""
+VOICE_SECRET = ""
+
+# Rules for SQL files
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
+
+# Durable Objects - Local SQLite persistence
+[durable_objects]
+bindings = [
+  { name = "ZERO_AGENT", class_name = "ZeroAgent" },
+  { name = "ZERO_MCP", class_name = "ZeroMCP" },
+  { name = "ZERO_DB", class_name = "ZeroDB" },
+  { name = "ZERO_DRIVER", class_name = "ZeroDriver" },
+  { name = "THINKING_MCP", class_name = "ThinkingMCP" },
+  { name = "WORKFLOW_RUNNER", class_name = "WorkflowRunner" },
+  { name = "THREAD_SYNC_WORKER", class_name = "ThreadSyncWorker" },
+  { name = "SHARD_REGISTRY", class_name = "ShardRegistry" },
+]
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["DurableMailbox"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ZeroAgent", "ZeroMCP"]
+
+[[migrations]]
+tag = "v3"
+new_classes = ["ZeroDB"]
+
+[[migrations]]
+tag = "v4"
+deleted_classes = ["DurableMailbox"]
+
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["ZeroDriver"]
+
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["ThinkingMCP"]
+
+[[migrations]]
+tag = "v7"
+new_sqlite_classes = ["WorkflowRunner"]
+
+[[migrations]]
+tag = "v8"
+new_sqlite_classes = ["ThreadSyncWorker"]
+
+[[migrations]]
+tag = "v9"
+new_sqlite_classes = ["ShardRegistry"]
+
+# KV Namespaces - Local file-backed storage
+[[kv_namespaces]]
+binding = "gmail_history_id"
+id = "gmail_history_id_local"
+
+[[kv_namespaces]]
+binding = "gmail_processing_threads"
+id = "gmail_processing_threads_local"
+
+[[kv_namespaces]]
+binding = "gmail_sub_age"
+id = "gmail_sub_age_local"
+
+[[kv_namespaces]]
+binding = "pending_emails_status"
+id = "pending_emails_status_local"
+
+[[kv_namespaces]]
+binding = "pending_emails_payload"
+id = "pending_emails_payload_local"
+
+[[kv_namespaces]]
+binding = "scheduled_emails"
+id = "scheduled_emails_local"
+
+[[kv_namespaces]]
+binding = "snoozed_emails"
+id = "snoozed_emails_local"
+
+# R2 Buckets - Local file storage
+[[r2_buckets]]
+binding = "THREADS_BUCKET"
+bucket_name = "threads-local"
+
+# Queues - Local simulation
+[queues]
+producers = [
+  { queue = "thread-queue-local", binding = "thread_queue" },
+  { queue = "send-email-queue-local", binding = "send_email_queue" },
+]
+consumers = [
+  { queue = "thread-queue-local" },
+  { queue = "send-email-queue-local" },
+]
+
+# Workflows - Disabled for Pi deployment (too resource intensive)
+# If needed, can be enabled but will use significant memory
+# [[workflows]]
+# binding = "SYNC_THREADS_WORKFLOW"
+# class_name = "SyncThreadsWorkflow"
+# name = "sync-threads-workflow-pi"
+
+# Hyperdrive replacement - Direct PostgreSQL connection
+# In local mode, we connect directly to PostgreSQL instead of using Hyperdrive
+# The DATABASE_URL environment variable is used instead
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "local-hyperdrive"
+localConnectionString = "postgresql://postgres:postgres@db:5432/zerodotemail"
+
+# AI binding - Will use OpenAI instead of Cloudflare AI locally
+# Set OPENAI_API_KEY environment variable
+[ai]
+binding = "AI"
+
+# Observability - Disabled for Pi (saves resources)
+[observability]
+enabled = false
