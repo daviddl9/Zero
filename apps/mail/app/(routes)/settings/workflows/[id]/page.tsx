@@ -31,14 +31,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { WorkflowNode, type WorkflowNodeData } from '@/components/workflows/workflow-node';
+import {
+  WorkflowNode,
+  type WorkflowNodeData,
+  type ExecutionStatus,
+  TestWorkflowModal,
+} from '@/components/workflows';
 import { NodePalette } from '@/components/workflows/node-palette';
 import { NodeConfigPanel } from '@/components/workflows/node-config-panel';
-import { useWorkflow, useWorkflowMutations, type WorkflowNode as WorkflowNodeType, type WorkflowConnections, type Workflow } from '@/hooks/use-workflows';
+import {
+  useWorkflow,
+  useWorkflowMutations,
+  type WorkflowNode as WorkflowNodeType,
+  type WorkflowConnections,
+  type Workflow,
+  type TestWorkflowResult,
+} from '@/hooks/use-workflows';
 import { useLabels } from '@/hooks/use-labels';
 import { useSkills } from '@/hooks/use-skills';
 import { m } from '@/paraglide/messages';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Play } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Define the React Flow node type with proper constraint
@@ -80,6 +92,10 @@ export default function WorkflowEditorPage() {
   const [workflowName, setWorkflowName] = useState('');
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [showNameDialog, setShowNameDialog] = useState(false);
+
+  // Test workflow state
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [testResults, setTestResults] = useState<TestWorkflowResult | null>(null);
 
   const labels = useMemo(() => userLabels ?? [], [userLabels]);
   const skills = useMemo(() => skillsData?.skills ?? [], [skillsData]);
@@ -289,6 +305,105 @@ export default function WorkflowEditorPage() {
     }
   };
 
+  const handleTestComplete = useCallback(
+    (result: TestWorkflowResult) => {
+      setTestResults(result);
+
+      // Update nodes with execution status
+      setNodes((nds) =>
+        nds.map((node) => {
+          const nodeResult = result.nodeResults[node.id];
+          let executionStatus: ExecutionStatus = null;
+          let matchedCategory: string | undefined;
+
+          if (nodeResult) {
+            if (!nodeResult.executed) {
+              executionStatus = 'skipped';
+            } else if (nodeResult.passed) {
+              executionStatus = 'passed';
+            } else {
+              executionStatus = 'failed';
+            }
+            matchedCategory = nodeResult.category;
+          } else if (result.executionPath.length > 0) {
+            // Node wasn't in results but workflow executed - mark as skipped
+            executionStatus = 'skipped';
+          }
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              executionStatus,
+              matchedCategory,
+            },
+          };
+        }),
+      );
+
+      // Update edges to highlight executed path
+      setEdges((eds) =>
+        eds.map((edge) => {
+          const sourceResult = result.nodeResults[edge.source];
+          const isOnExecutionPath =
+            result.executionPath.includes(edge.source) &&
+            result.executionPath.includes(edge.target);
+
+          // Check if this edge's output index matches the executed output
+          const outputIndex = edge.sourceHandle
+            ? parseInt(edge.sourceHandle.replace('output-', ''), 10)
+            : 0;
+          const isMatchingOutput =
+            sourceResult?.outputIndex === undefined || sourceResult.outputIndex === outputIndex;
+
+          if (isOnExecutionPath && isMatchingOutput && sourceResult?.passed) {
+            return {
+              ...edge,
+              style: {
+                ...edge.style,
+                stroke: '#10b981',
+                strokeWidth: 3,
+              },
+              animated: true,
+            };
+          }
+
+          return {
+            ...edge,
+            style: {
+              ...defaultEdgeOptions.style,
+            },
+            animated: false,
+          };
+        }),
+      );
+    },
+    [setNodes, setEdges],
+  );
+
+  const clearTestResults = useCallback(() => {
+    setTestResults(null);
+    // Clear execution status from nodes
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          executionStatus: undefined,
+          matchedCategory: undefined,
+        },
+      })),
+    );
+    // Reset edge styles
+    setEdges((eds) =>
+      eds.map((edge) => ({
+        ...edge,
+        style: defaultEdgeOptions.style,
+        animated: false,
+      })),
+    );
+  }, [setNodes, setEdges]);
+
   if (!isNew && isLoading) {
     return (
       <div className="flex h-[calc(100vh-200px)] items-center justify-center">
@@ -315,6 +430,19 @@ export default function WorkflowEditorPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setShowNameDialog(true)}>
             Edit Details
+          </Button>
+          {testResults && (
+            <Button variant="ghost" size="sm" onClick={clearTestResults}>
+              Clear Results
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => setIsTestModalOpen(true)}
+            disabled={nodes.length === 0}
+          >
+            <Play className="h-4 w-4 mr-2" />
+            {m['pages.settings.workflows.testWorkflow']()}
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
             <Save className="h-4 w-4 mr-2" />
@@ -410,6 +538,21 @@ export default function WorkflowEditorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Test Workflow Modal */}
+      {isTestModalOpen && (() => {
+        const { nodes: workflowNodes, connections: workflowConnections } = convertToWorkflowFormat();
+        return (
+          <TestWorkflowModal
+            open={isTestModalOpen}
+            onOpenChange={setIsTestModalOpen}
+            workflowId={isNew ? undefined : workflowId}
+            nodes={workflowNodes}
+            connections={workflowConnections}
+            onTestComplete={handleTestComplete}
+          />
+        );
+      })()}
     </div>
   );
 }
