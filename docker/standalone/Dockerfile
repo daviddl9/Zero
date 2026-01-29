@@ -17,6 +17,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY packages/ packages/
+COPY patches/ patches/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -45,14 +46,13 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 
-# Copy packages (for workspace dependencies)
+# Copy packages and patches (for workspace dependencies)
 COPY --from=builder /app/packages packages/
+COPY --from=builder /app/patches patches/
 
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
-
-# Install tsx for running TypeScript
-RUN pnpm add -D tsx
+# Install all dependencies (tsx needed for start:standalone script)
+# Skip postinstall which needs full workspace context
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy server source code
 COPY --from=builder /app/apps/server/src apps/server/src
