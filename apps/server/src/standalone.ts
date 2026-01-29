@@ -236,13 +236,19 @@ async function main() {
     return c.json(health);
   });
 
-  // Bull Board admin UI
-  const serverAdapter = new HonoAdapter('/admin/queues');
-  createBullBoard({
-    queues: getAllQueues().map((q) => new BullMQAdapter(q)),
-    serverAdapter,
-  });
-  app.route('/admin/queues', serverAdapter.registerPlugin());
+  // Bull Board admin UI (optional - may fail due to hono version compatibility)
+  try {
+    const serverAdapter = new HonoAdapter('/admin/queues');
+    createBullBoard({
+      queues: getAllQueues().map((q) => new BullMQAdapter(q)),
+      serverAdapter,
+    });
+    app.route('/admin/queues', serverAdapter.registerPlugin());
+    console.log('[Standalone] Bull Board UI available at /admin/queues');
+  } catch (error) {
+    console.warn('[Standalone] Failed to initialize Bull Board UI:', error);
+    console.warn('[Standalone] Job queue is still operational, but admin UI is unavailable');
+  }
 
   // Pub/Sub webhook endpoint (for Gmail push notifications)
   app.post('/api/google/pubsub', async (c) => {
