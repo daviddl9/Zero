@@ -8,7 +8,9 @@ import { shortcutRouter } from './routes/shortcut';
 import { settingsRouter } from './routes/settings';
 import { getContext } from 'hono/context-storage';
 import { loggingRouter } from './routes/logging';
+import { workflowsRouter } from './routes/workflows';
 import { skillsRouter } from './routes/skills';
+import { memoryRouter } from './routes/memory';
 import { draftsRouter } from './routes/drafts';
 import { labelsRouter } from './routes/label';
 import { notesRouter } from './routes/notes';
@@ -30,6 +32,7 @@ export const appRouter = router({
   drafts: draftsRouter,
   labels: labelsRouter,
   mail: mailRouter,
+  memory: memoryRouter,
   notes: notesRouter,
   shortcut: shortcutRouter,
   settings: settingsRouter,
@@ -38,6 +41,7 @@ export const appRouter = router({
   templates: templatesRouter,
   meet: meetRouter,
   logging: loggingRouter,
+  workflows: workflowsRouter,
 });
 
 export type AppRouter = typeof appRouter;

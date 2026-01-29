@@ -19,6 +19,7 @@ import { Check, Command, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucid
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextEffect } from '@/components/motion-primitives/text-effect';
+import { useCorrectionTracker, useSelectionTracker } from '@/hooks/use-correction-tracker';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
 import { ScheduleSendPicker } from './schedule-send-picker';
 import useComposeEditor from '@/hooks/use-compose-editor';
@@ -217,6 +218,10 @@ export function EmailComposer({
     trpc.ai.generateEmailSubject.mutationOptions(),
   );
 
+  // Memory learning hooks
+  const { trackAiDraft, submitCorrection, clearTracking } = useCorrectionTracker();
+  const { trackSelection } = useSelectionTracker();
+
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -356,6 +361,24 @@ export function EmailComposer({
       setIsLoading(true);
       setAiGeneratedMessage(null);
       setGeneratedDrafts(null);
+
+      // Submit correction to memory system if AI draft was edited
+      const currentContent = editor.getText();
+      const primaryRecipient = values.to[0] ?? '';
+      const subjectKeywords = values.subject
+        .split(/\s+/)
+        .filter((word) => word.length > 3)
+        .slice(0, 5);
+
+      // Fire-and-forget - don't block sending
+      submitCorrection({
+        currentContent,
+        recipientEmail: primaryRecipient,
+        subjectKeywords,
+      }).catch(() => {
+        // Silently ignore errors - learning is non-critical
+      });
+
       // Save draft before sending, we want to send drafts instead of sending new emails
       if (hasUnsavedChanges) await saveDraft();
 
@@ -992,6 +1015,25 @@ export function EmailComposer({
                         };
                       }),
                     });
+                    // Track the AI draft for correction learning
+                    trackAiDraft(draft.body);
+
+                    // Track selection for learning
+                    const values = getValues();
+                    const rejectedApproaches = generatedDrafts
+                      .filter((d) => d.id !== draft.id)
+                      .map((d) => d.approach);
+
+                    trackSelection({
+                      selectedApproach: draft.approach,
+                      rejectedApproaches,
+                      recipientEmail: values.to[0] ?? '',
+                      subject: values.subject,
+                      threadDepth: 0,
+                    }).catch(() => {
+                      // Silently ignore errors - learning is non-critical
+                    });
+
                     // Update subject if the draft includes one
                     if (draft.subject) {
                       setValue('subject', draft.subject);
@@ -1000,6 +1042,7 @@ export function EmailComposer({
                   }}
                   onReject={() => {
                     setGeneratedDrafts(null);
+                    clearTracking();
                   }}
                 />
               ) : aiGeneratedMessage !== null ? (
@@ -1015,10 +1058,13 @@ export function EmailComposer({
                         };
                       }),
                     });
+                    // Track the AI draft for correction learning
+                    trackAiDraft(aiGeneratedMessage);
                     setAiGeneratedMessage(null);
                   }}
                   onReject={() => {
                     setAiGeneratedMessage(null);
+                    clearTracking();
                   }}
                 />
               ) : null}

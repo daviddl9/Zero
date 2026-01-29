@@ -97,6 +97,8 @@ export type ZeroEnv = {
   DD_SITE: string;
   // Encryption master key for user API keys (AES-256-GCM)
   ENCRYPTION_MASTER_KEY?: string;
+  // Memory feature toggle for AI draft learning
+  MEMORY_ENABLED?: boolean;
 };
 
 const env = _env as ZeroEnv;

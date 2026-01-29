@@ -2,6 +2,8 @@ import {
   getWritingStyleMatrixForConnectionId,
   type WritingStyleMatrix,
 } from '../../../services/writing-style-service';
+import { memoryService } from '../../../services/memory-service';
+import type { MemorySearchResult } from '../../../types/memory';
 import {
   StyledEmailAssistantSystemPrompt,
   MultiDraftEmailAssistantSystemPrompt,
@@ -43,6 +45,7 @@ type ComposeEmailInput = {
   }>;
   username: string;
   connectionId: string;
+  userId: string;
   generateMultipleDrafts?: boolean;
 };
 
@@ -107,11 +110,20 @@ function buildThreadMessages(
 }
 
 export async function composeEmail(input: ComposeEmailInput) {
-  const { prompt, threadMessages = [], cc, emailSubject, to, username, connectionId } = input;
+  const { prompt, threadMessages = [], cc, emailSubject, to, username, connectionId, userId } =
+    input;
 
-  const writingStyleMatrix = await getWritingStyleMatrixForConnectionId({
-    connectionId,
-  });
+  // Retrieve memories and writing style in parallel for performance
+  const primaryRecipient = to?.[0];
+  const [writingStyleMatrix, memories] = await Promise.all([
+    getWritingStyleMatrixForConnectionId({ connectionId }),
+    memoryService.getMemoriesForCompose({
+      userId,
+      recipientEmail: primaryRecipient,
+      query: prompt,
+      limit: 10,
+    }),
+  ]);
 
   const systemPrompt = await getPrompt(
     `${connectionId}-${EPrompts.Compose}`,
@@ -123,6 +135,7 @@ export async function composeEmail(input: ComposeEmailInput) {
     prompt,
     username,
     styleProfile: writingStyleMatrix?.style as WritingStyleMatrix,
+    memories,
   });
 
   const messages = buildThreadMessages(threadMessages);
@@ -170,6 +183,7 @@ export async function composeEmailWithMultipleDrafts(
     to,
     username,
     connectionId,
+    userId,
     generateMultipleDrafts = true,
   } = input;
 
@@ -182,9 +196,17 @@ export async function composeEmailWithMultipleDrafts(
     };
   }
 
-  const writingStyleMatrix = await getWritingStyleMatrixForConnectionId({
-    connectionId,
-  });
+  // Retrieve memories and writing style in parallel for performance
+  const primaryRecipient = to?.[0];
+  const [writingStyleMatrix, memories] = await Promise.all([
+    getWritingStyleMatrixForConnectionId({ connectionId }),
+    memoryService.getMemoriesForCompose({
+      userId,
+      recipientEmail: primaryRecipient,
+      query: prompt,
+      limit: 10,
+    }),
+  ]);
 
   const systemPrompt = MultiDraftEmailAssistantSystemPrompt();
 
@@ -194,6 +216,7 @@ export async function composeEmailWithMultipleDrafts(
     prompt,
     username,
     styleProfile: writingStyleMatrix?.style as WritingStyleMatrix,
+    memories,
   });
 
   const messages = buildThreadMessages(threadMessages);
@@ -270,6 +293,7 @@ export const compose = activeConnectionProcedure
       ...input,
       username: sessionUser.name,
       connectionId: activeConnection.id,
+      userId: sessionUser.id,
     });
 
     return result;
@@ -328,12 +352,14 @@ const EmailAssistantPrompt = ({
   prompt,
   username,
   styleProfile,
+  memories,
 }: {
   currentSubject?: string;
   recipients?: string[];
   prompt: string;
   username: string;
   styleProfile?: WritingStyleMatrix | null;
+  memories?: MemorySearchResult[];
 }) => {
   const parts: string[] = [];
 
@@ -343,6 +369,18 @@ const EmailAssistantPrompt = ({
     parts.push(`\`\`\`json
   ${JSON.stringify(styleProfile, null, 2)}
   \`\`\``);
+  }
+
+  // Include learned preferences from memory
+  if (memories && memories.length > 0) {
+    parts.push('## Personal Preferences & Learning');
+    parts.push(
+      'The following preferences have been learned from your past behavior. Apply these when drafting:',
+    );
+    memories.forEach((m) => {
+      parts.push(`- ${m.content}`);
+    });
+    parts.push('');
   }
 
   parts.push('## Email Context');
@@ -384,12 +422,14 @@ const MultiDraftEmailAssistantPrompt = ({
   prompt,
   username,
   styleProfile,
+  memories,
 }: {
   currentSubject?: string;
   recipients?: string[];
   prompt: string;
   username: string;
   styleProfile?: WritingStyleMatrix | null;
+  memories?: MemorySearchResult[];
 }) => {
   const parts: string[] = [];
 
@@ -400,6 +440,18 @@ const MultiDraftEmailAssistantPrompt = ({
     parts.push(`\`\`\`json
   ${JSON.stringify(styleProfile, null, 2)}
   \`\`\``);
+  }
+
+  // Include learned preferences from memory
+  if (memories && memories.length > 0) {
+    parts.push('## Personal Preferences & Learning');
+    parts.push(
+      'The following preferences have been learned from your past behavior. Apply these when drafting all options:',
+    );
+    memories.forEach((m) => {
+      parts.push(`- ${m.content}`);
+    });
+    parts.push('');
   }
 
   parts.push('## Email Context');
