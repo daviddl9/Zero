@@ -19,10 +19,10 @@
 
 services:
   # ========================================
-  # Nginx - Change port to 3001
+  # Nginx - Change port to 3001 (override default 3000)
   # ========================================
   nginx:
-    ports:
+    ports: !override
       - "3001:80"
 
   # ========================================
