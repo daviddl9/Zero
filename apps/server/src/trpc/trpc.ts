@@ -5,7 +5,11 @@ import { getConnInfo } from 'hono/cloudflare-workers';
 import { initTRPC, TRPCError } from '@trpc/server';
 import { createLoggingMiddleware } from '../lib/trpc-logging';
 
-import { redis } from '../lib/services';
+import { redis, getNativeRedisClient } from '../lib/services';
+import {
+  NativeRedisRateLimiter,
+  shouldUseNativeRedis,
+} from '../lib/self-hosted';
 import { env } from '../env';
 import type { Context } from 'hono';
 import superjson from 'superjson';
@@ -139,6 +143,15 @@ export const activeDriverProcedure = activeConnectionProcedure.use(async ({ ctx,
   return res;
 });
 
+/**
+ * Parse Upstash limiter config to extract points and duration
+ * Upstash limiter is a function like: Ratelimit.slidingWindow(10, "60 s")
+ */
+function parseUpstashLimiter(_limiter: RatelimitConfig['limiter']): { points: number; duration: number } {
+  // Default values - the Upstash limiter config is opaque, so we use sensible defaults
+  return { points: 10, duration: 60 };
+}
+
 export const createRateLimiterMiddleware = (config: {
   limiter: RatelimitConfig['limiter'];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -147,14 +160,45 @@ export const createRateLimiterMiddleware = (config: {
   t.middleware(async ({ next, ctx, input }) => {
     // Skip rate limiting in non-production if Redis fails
     try {
-      const ratelimiter = new Ratelimit({
-        redis: redis(),
-        limiter: config.limiter,
-        analytics: true,
-        prefix: config.generatePrefix(ctx, input),
-      });
       const finalIp = getConnInfo(ctx.c).remote.address ?? 'no-ip';
-      const { success, limit, reset, remaining } = await ratelimiter.limit(finalIp);
+      const prefix = config.generatePrefix(ctx, input);
+
+      let success: boolean;
+      let limit: number;
+      let reset: number;
+      let remaining: number;
+
+      if (shouldUseNativeRedis()) {
+        // Use native Redis rate limiter for self-hosted mode
+        const nativeClient = getNativeRedisClient();
+        const limiterConfig = parseUpstashLimiter(config.limiter);
+
+        const rateLimiter = new NativeRedisRateLimiter(nativeClient.getClient(), {
+          points: limiterConfig.points,
+          duration: limiterConfig.duration,
+          keyPrefix: `ratelimit:${prefix}:`,
+        });
+
+        const result = await rateLimiter.limit(finalIp);
+        success = result.success;
+        limit = result.limit;
+        reset = result.reset;
+        remaining = result.remaining;
+      } else {
+        // Use Upstash rate limiter for Cloudflare Workers mode
+        const ratelimiter = new Ratelimit({
+          redis: redis(),
+          limiter: config.limiter,
+          analytics: true,
+          prefix,
+        });
+
+        const result = await ratelimiter.limit(finalIp);
+        success = result.success;
+        limit = result.limit;
+        reset = result.reset;
+        remaining = result.remaining;
+      }
 
       ctx.c.res.headers.append('X-RateLimit-Limit', limit.toString());
       ctx.c.res.headers.append('X-RateLimit-Remaining', remaining.toString());

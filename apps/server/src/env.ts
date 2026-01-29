@@ -99,6 +99,25 @@ export type ZeroEnv = {
   ENCRYPTION_MASTER_KEY?: string;
   // Memory feature toggle for AI draft learning
   MEMORY_ENABLED?: boolean;
+
+  // Self-hosted / Standalone mode configuration
+  SELF_HOSTED?: string;
+  STANDALONE?: string;
+
+  // BullMQ / Job Queue configuration (for self-hosted mode)
+  REDIS_HOST?: string;
+  REDIS_PORT?: string;
+  REDIS_PASSWORD?: string;
+  ENABLE_JOB_QUEUE?: string;
+  ENABLE_SCHEDULER?: string;
+  WORKER_CONCURRENCY?: string;
+
+  // S3/MinIO configuration (for self-hosted object storage)
+  S3_ENDPOINT?: string;
+  S3_ACCESS_KEY?: string;
+  S3_SECRET_KEY?: string;
+  S3_BUCKET?: string;
+  S3_REGION?: string;
 };
 
 const env = _env as ZeroEnv;

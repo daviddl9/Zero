@@ -30,6 +30,7 @@ import { and, eq } from 'drizzle-orm';
 import { McpAgent } from 'agents/mcp';
 import { createDb } from '../db';
 import { z } from 'zod';
+import { createThreadStorage, type IThreadStorage } from '../lib/thread-storage';
 
 const decoder = new TextDecoder();
 
@@ -294,8 +295,11 @@ export class ZeroAgent extends AIChatAgent<typeof env> {
   private foldersInSync: string[] = [];
   private currentFolder: string | null = 'inbox';
   driver: MailManager | null = null;
+  private threadStorage: IThreadStorage;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    // Initialize thread storage with R2 bucket (Cloudflare Workers mode)
+    this.threadStorage = createThreadStorage({ r2Bucket: env.THREADS_BUCKET });
     if (shouldDropTables) this.dropTables();
     this.sql`
         CREATE TABLE IF NOT EXISTS threads (
@@ -828,10 +832,7 @@ export class ZeroAgent extends AIChatAgent<typeof env> {
         // Convert receivedOn to ISO format for proper sorting
         const normalizedReceivedOn = new Date(latest.receivedOn).toISOString();
 
-        await env.THREADS_BUCKET.put(
-          this.getThreadKey(threadId),
-          JSON.stringify(threadData.messages),
-        );
+        await this.threadStorage.putThread(this.name, threadId, threadData);
 
         this.sql`
           INSERT OR REPLACE INTO threads (
@@ -1125,11 +1126,11 @@ export class ZeroAgent extends AIChatAgent<typeof env> {
       }
 
       const row = result[0] as any;
-      const storedMessages = await env.THREADS_BUCKET.get(this.getThreadKey(id));
+      const storedThread = await this.threadStorage.getThread(this.name, id);
       const latestLabelIds = JSON.parse(row.latest_label_ids || '[]');
 
-      const messages: ParsedMessage[] = storedMessages
-        ? JSON.parse(await storedMessages.text())
+      const messages: ParsedMessage[] = storedThread
+        ? storedThread.messages
         : [];
 
       return {

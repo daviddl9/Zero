@@ -70,6 +70,8 @@ import * as schema from './db/schema';
 import { threads } from './db/schema';
 import { Effect, pipe } from 'effect';
 import { createDb } from '../../db';
+import { WorkflowTriggerService, type SyncedThreadData } from '../../lib/workflow-engine';
+import { createThreadStorage, type IThreadStorage } from '../../lib/thread-storage';
 // UIMessage is used for the new AI SDK 6.x streaming API
 import { create } from './db';
 
@@ -332,6 +334,7 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     contacts: Array<{ email: string; name?: string | null; freq: number; last: number }>;
     hash: string;
   } | null = null;
+  private threadStorage: IThreadStorage;
 
   private invalidateRecipientCache() {
     this.recipientCache = null;
@@ -382,6 +385,8 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.db = drizzle(ctx.storage, { schema });
+    // Initialize thread storage with R2 bucket (Cloudflare Workers mode)
+    this.threadStorage = createThreadStorage({ r2Bucket: env.THREADS_BUCKET });
   }
 
   async setName(name: string) {
@@ -1448,10 +1453,10 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
           labels: [],
         } satisfies IGetThreadResponse;
       }
-      const storedThread = await this.env.THREADS_BUCKET.get(this.getThreadKey(id));
+      const storedThread = await this.threadStorage.getThread(this.name, id);
 
       let messages: ParsedMessage[] = storedThread
-        ? (JSON.parse(await storedThread.text()) as IGetThreadResponse).messages
+        ? storedThread.messages
         : [];
 
       const isLatestDraft = messages.some((e) => e.isDraft === true);
@@ -1677,6 +1682,49 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     }
   }
 
+  /**
+   * Evaluate workflow triggers for a synced thread
+   */
+  public async evaluateWorkflowTriggers(
+    threadData: SyncedThreadData,
+    event: 'email_received' | 'email_labeled' = 'email_received',
+    labelChange?: { label: string; action: 'added' | 'removed' }
+  ): Promise<void> {
+    if (!this.connection) {
+      console.warn('[ZeroDriver] No connection available for workflow trigger evaluation');
+      return;
+    }
+
+    try {
+      const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
+      const triggerService = new WorkflowTriggerService(db);
+
+      const result = await triggerService.evaluateAndTrigger(
+        this.connection.userId,
+        this.connection.id,
+        threadData,
+        event,
+        labelChange
+      );
+
+      if (result.triggeredWorkflows.length > 0) {
+        console.log(
+          `[ZeroDriver] Triggered ${result.triggeredWorkflows.length} workflow(s) for thread ${threadData.id}:`,
+          result.triggeredWorkflows.map((w) => w.workflowName).join(', ')
+        );
+      }
+
+      if (result.errors.length > 0) {
+        console.warn('[ZeroDriver] Workflow trigger errors:', result.errors);
+      }
+
+      this.ctx.waitUntil(conn.end());
+    } catch (error) {
+      console.error('[ZeroDriver] Failed to evaluate workflow triggers:', error);
+      // Don't throw - workflow trigger failures shouldn't block sync
+    }
+  }
+
   private async triggerSyncWorkflow(folder: string): Promise<void> {
     // Use direct sync when workflows are disabled (local development)
     if (this.env.DISABLE_WORKFLOWS === 'true') {
@@ -1755,6 +1803,23 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
                 },
                 latest.tags.map((tag: { id: string }) => tag.id),
               );
+
+              // Evaluate workflow triggers for this synced thread
+              this.ctx.waitUntil(
+                this.evaluateWorkflowTriggers({
+                  id: thread.id,
+                  subject: latest.subject,
+                  sender: latest.sender,
+                  labels: latest.tags.map((tag: { id: string; name?: string }) => ({
+                    id: tag.id,
+                    name: tag.name || tag.id,
+                  })),
+                  receivedOn: new Date(latest.receivedOn).toISOString(),
+                  unread: latest.unread,
+                  body: latest.body || latest.decodedBody || '',
+                })
+              );
+
               totalSynced++;
             }
           } catch (threadError) {

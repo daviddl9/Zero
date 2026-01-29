@@ -5,14 +5,18 @@ import { DurableObject } from 'cloudflare:workers';
 import type { ParsedMessage } from '../../types';
 import type { ZeroEnv } from '../../env';
 import { Effect } from 'effect';
+import {
+  createThreadStorage,
+  type IThreadStorage,
+} from '../../lib/thread-storage';
 
 export class ThreadSyncWorker extends DurableObject<ZeroEnv> {
+  private threadStorage: IThreadStorage;
+
   constructor(state: DurableObjectState, env: ZeroEnv) {
     super(state, env);
-  }
-
-  private getThreadKey(connectionId: string, threadId: string) {
-    return `${connectionId}/${threadId}.json`;
+    // In Cloudflare Workers mode, use R2 bucket
+    this.threadStorage = createThreadStorage({ r2Bucket: env.THREADS_BUCKET });
   }
 
   public async syncThread(
@@ -26,15 +30,7 @@ export class ThreadSyncWorker extends DurableObject<ZeroEnv> {
       withRetry(Effect.tryPromise(() => driver.get(threadId))),
     );
 
-    await this.env.THREADS_BUCKET.put(
-      this.getThreadKey(connection.id, threadId),
-      JSON.stringify(thread),
-      {
-        customMetadata: {
-          threadId,
-        },
-      },
-    );
+    await this.threadStorage.putThread(connection.id, threadId, thread);
 
     return thread.latest;
   }
