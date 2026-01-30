@@ -89,7 +89,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
       # App URLs
-      VITE_PUBLIC_BACKEND_URL: ${BACKEND_URL:-http://localhost:3000/api}
+      VITE_PUBLIC_BACKEND_URL: ${BACKEND_URL:-http://localhost:3000}
       VITE_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
       BASE_URL: ${BASE_URL:-http://localhost:3000}
 

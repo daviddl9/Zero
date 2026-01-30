@@ -19,6 +19,8 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { HonoAdapter } from '@bull-board/hono';
 import { trpcServer } from '@hono/trpc-server';
 import { createLocalJWKSet, jwtVerify } from 'jose';
+import { EProviders } from './types';
+import { initTracing } from './lib/tracing';
 
 // Job Queue
 import {
@@ -335,6 +337,101 @@ async function main() {
     }
 
     return c.json(health);
+  });
+
+  // Sentry Tunnel
+  const SENTRY_HOST = 'o4509328786915328.ingest.us.sentry.io';
+  const SENTRY_PROJECT_IDS = new Set(['4509328795303936']);
+
+  app.post('/monitoring/sentry', async (c) => {
+    try {
+      const envelopeBytes = await c.req.arrayBuffer();
+      const envelope = new TextDecoder().decode(envelopeBytes);
+      const piece = envelope.split('\n')[0];
+      const header = JSON.parse(piece);
+      const dsn = new URL(header['dsn']);
+      const project_id = dsn.pathname?.replace('/', '');
+
+      if (dsn.hostname !== SENTRY_HOST) {
+        throw new Error(`Invalid sentry hostname: ${dsn.hostname}`);
+      }
+
+      if (!project_id || !SENTRY_PROJECT_IDS.has(project_id)) {
+        throw new Error(`Invalid sentry project id: ${project_id}`);
+      }
+
+      const upstream_sentry_url = `https://${SENTRY_HOST}/api/${project_id}/envelope/`;
+      await fetch(upstream_sentry_url, {
+        method: 'POST',
+        body: envelopeBytes,
+      });
+
+      return c.json({}, { status: 200 });
+    } catch (e) {
+      console.error('[Standalone] Error tunneling to sentry', e);
+      return c.json({ error: 'error tunneling to sentry' }, { status: 500 });
+    }
+  });
+
+  // Google Pub/Sub Notification Webhook (Alternative path for compatibility)
+  app.post('/a8n/notify/:providerId', async (c) => {
+    const tracer = initTracing();
+    const span = tracer.startSpan('a8n_notify', {
+      attributes: {
+        'provider.id': c.req.param('providerId'),
+        'notification.type': 'email_notification',
+        'http.method': c.req.method,
+        'http.url': c.req.url,
+      },
+    });
+
+    try {
+      if (!c.req.header('Authorization')) {
+        span.setAttributes({ 'auth.status': 'missing' });
+        return c.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      
+      const providerId = c.req.param('providerId');
+      if (providerId === EProviders.google) {
+        const body = await c.req.json<{ historyId: string }>();
+        const subHeader = c.req.header('x-goog-pubsub-subscription-name');
+
+        span.setAttributes({
+          'history.id': body.historyId,
+          'subscription.name': subHeader || 'missing',
+        });
+
+        if (!subHeader) {
+          console.log('[Standalone] [GOOGLE] no subscription header', body);
+          span.setAttributes({ 'error.type': 'missing_subscription_header' });
+          return c.json({}, { status: 200 });
+        }
+        
+        // In standalone, we skip JWT verifyToken check as it's designed for CF Workers KV
+        // Instead we rely on the subscription name and history ID structure
+        // Or implement a standalone verifyToken if needed (TODO)
+        
+        const { addJob } = await import('./lib/job-queue');
+        await addJob(JOB_NAMES.SYNC_COORDINATOR, {
+          userId: '', // Will be resolved by subscription name in the job
+          connectionId: '', 
+          triggerType: 'pubsub',
+          historyId: body.historyId,
+          subscriptionName: subHeader,
+        });
+        
+        span.setAttributes({ 'queue.message_sent': true });
+        return c.json({ message: 'OK' }, { status: 200 });
+      }
+      return c.json({ message: 'OK' }, { status: 200 });
+    } catch (error) {
+      console.error('[Standalone] Error processing a8n notify:', error);
+      span.recordException(error as Error);
+      span.setStatus({ code: 2, message: (error as Error).message });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 
   // Root redirect
