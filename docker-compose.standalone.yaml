@@ -17,14 +17,19 @@ services:
   # Nginx - Frontend & Reverse Proxy
   # ========================================
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+      args:
+        VITE_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+        VITE_PUBLIC_BACKEND_URL: ${BACKEND_URL:-http://localhost:3000/api}
     container_name: zero-nginx
     restart: unless-stopped
     ports:
       - "3000:80"
-    volumes:
-      - ./apps/mail/build/client:/usr/share/nginx/html:ro
-      - ./nginx.standalone.conf:/etc/nginx/nginx.conf:ro
+    # volumes:
+    #   - ./apps/mail/build/client:/usr/share/nginx/html:ro
+    #   - ./nginx.standalone.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       server:
         condition: service_healthy

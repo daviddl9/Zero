@@ -31,6 +31,5 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./apps/mail/build/client:/usr/share/nginx/html:ro
       - ./nginx.tailscale.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro

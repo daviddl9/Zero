@@ -124,7 +124,7 @@ if ssh "${PI_HOST}" "curl -sf http://localhost:3001/health" &>/dev/null; then
     echo "========================================"
     echo ""
     echo "Access Zero Email at:"
-    echo "  http://192-168-7-14.nip.io:3001"
+    echo "  https://raspberrypi.taile015d9.ts.net"
     echo ""
     echo "MinIO Console (shared):"
     echo "  http://192.168.7.14:9001"

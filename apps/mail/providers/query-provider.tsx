@@ -81,7 +81,10 @@ const getQueryClient = (connectionId: string | null) => {
   }
 };
 
-const getUrl = () => import.meta.env.VITE_PUBLIC_BACKEND_URL + '/api/trpc';
+const getUrl = () => {
+  const base = typeof window !== 'undefined' ? window.location.origin : (import.meta.env.VITE_PUBLIC_BACKEND_URL || '');
+  return (base.endsWith('/api') ? base : `${base}/api`) + '/trpc';
+};
 
 export const { TRPCProvider, useTRPC, useTRPCClient } = createTRPCContext<AppRouter>();
 
