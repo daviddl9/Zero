@@ -4,12 +4,25 @@ import { getContext } from 'hono/context-storage';
 import { connection } from '../db/schema';
 import { defaultPageSize } from './utils';
 import type { HonoContext } from '../ctx';
-import { createClient } from 'dormroom';
 import { createDriver } from './driver';
 import { eq } from 'drizzle-orm';
 import { createDb } from '../db';
 import { Effect } from 'effect';
 import { isSelfHostedMode } from './self-hosted';
+
+// Dynamically import dormroom only in Cloudflare mode
+// The dormroom library is Cloudflare Workers specific and doesn't work in Node.js
+let createClient: typeof import('dormroom').createClient | null = null;
+const getDormroomClient = async () => {
+  if (isSelfHostedMode()) {
+    throw new Error('dormroom is not available in standalone mode');
+  }
+  if (!createClient) {
+    const dormroom = await import('dormroom');
+    createClient = dormroom.createClient;
+  }
+  return createClient;
+};
 
 // Conditionally import env - in standalone mode, we may not have cloudflare bindings
 const getEnv = () => {
@@ -73,7 +86,8 @@ const getRegistryClient = async (connectionId: string) => {
   if (!env?.SHARD_REGISTRY) {
     throw new Error('SHARD_REGISTRY not available. Are you running in Cloudflare Workers?');
   }
-  const registryClient = createClient({
+  const dormroomCreateClient = await getDormroomClient();
+  const registryClient = dormroomCreateClient({
     doNamespace: env.SHARD_REGISTRY,
     configs: [{ name: `connection:${connectionId}:registry` }],
     ctx: new MockExecutionContext(),
@@ -89,7 +103,8 @@ const getShardClient = async (connectionId: string, shardId: string) => {
   if (!env?.ZERO_DRIVER) {
     throw new Error('ZERO_DRIVER not available. Are you running in Cloudflare Workers?');
   }
-  const shardClient = createClient({
+  const dormroomCreateClient = await getDormroomClient();
+  const shardClient = dormroomCreateClient({
     doNamespace: env.ZERO_DRIVER,
     ctx: new MockExecutionContext(),
     configs: [{ name: `connection:${connectionId}:shard:${shardId}` }],
