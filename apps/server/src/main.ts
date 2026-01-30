@@ -16,7 +16,17 @@ import {
   emailTemplate,
   skill,
   skillReference,
+  workflow,
+  workflowExecution,
 } from './db/schema';
+import type {
+  WorkflowNode,
+  WorkflowConnections,
+  WorkflowSettings,
+  ExecutionStatus,
+  TriggerData,
+  NodeExecutionResult,
+} from './lib/workflow-engine/types';
 import {
   toAttachmentFiles,
   type SerializedAttachment,
@@ -31,7 +41,7 @@ import { ShardRegistry, ZeroAgent, ZeroDriver } from './routes/agent';
 import { ThreadSyncWorker } from './routes/agent/sync-worker';
 import { oAuthDiscoveryMetadata } from 'better-auth/plugins';
 import { EProviders, type IEmailSendBatch } from './types';
-import { eq, and, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, lt } from 'drizzle-orm';
 import { ThinkingMCP } from './lib/sequential-thinking';
 
 import { contextStorage } from 'hono/context-storage';
@@ -256,6 +266,84 @@ export class DbRpcDO extends RpcTarget {
 
   async deleteSkillReference(referenceId: string): Promise<boolean> {
     return await this.mainDo.deleteSkillReference(this.userId, referenceId);
+  }
+
+  // Workflow methods
+  async listAllWorkflows(): Promise<(typeof workflow.$inferSelect)[]> {
+    return await this.mainDo.findAllWorkflows(this.userId);
+  }
+
+  async getWorkflow(identifier: string): Promise<typeof workflow.$inferSelect | null> {
+    return await this.mainDo.findWorkflow(this.userId, identifier);
+  }
+
+  async createWorkflow(payload: {
+    name: string;
+    description: string | null;
+    connectionId: string | null;
+    nodes: WorkflowNode[];
+    connections: WorkflowConnections;
+    settings: WorkflowSettings | null;
+    isEnabled: boolean;
+  }): Promise<typeof workflow.$inferSelect> {
+    return await this.mainDo.createWorkflow(this.userId, payload);
+  }
+
+  async updateWorkflow(
+    workflowId: string,
+    data: Partial<{
+      name: string;
+      description: string;
+      connectionId: string;
+      nodes: WorkflowNode[];
+      connections: WorkflowConnections;
+      settings: WorkflowSettings;
+      isEnabled: boolean;
+    }>,
+  ): Promise<typeof workflow.$inferSelect | null> {
+    return await this.mainDo.updateWorkflow(this.userId, workflowId, data);
+  }
+
+  async deleteWorkflow(workflowId: string): Promise<boolean> {
+    return await this.mainDo.deleteWorkflow(this.userId, workflowId);
+  }
+
+  // Workflow Execution methods
+  async listWorkflowExecutions(
+    workflowId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<(typeof workflowExecution.$inferSelect)[]> {
+    return await this.mainDo.findWorkflowExecutions(this.userId, workflowId, limit, cursor);
+  }
+
+  async getWorkflowExecution(
+    executionId: string,
+  ): Promise<typeof workflowExecution.$inferSelect | null> {
+    return await this.mainDo.findWorkflowExecution(this.userId, executionId);
+  }
+
+  async createWorkflowExecution(payload: {
+    workflowId: string;
+    threadId: string | null;
+    status: ExecutionStatus;
+    triggerData: TriggerData | null;
+    nodeResults: NodeExecutionResult[] | null;
+    error: string | null;
+  }): Promise<typeof workflowExecution.$inferSelect> {
+    return await this.mainDo.createWorkflowExecution(this.userId, payload);
+  }
+
+  async updateWorkflowExecution(
+    executionId: string,
+    data: Partial<{
+      status: ExecutionStatus;
+      nodeResults: NodeExecutionResult[];
+      error: string;
+      completedAt: Date;
+    }>,
+  ): Promise<typeof workflowExecution.$inferSelect | null> {
+    return await this.mainDo.updateWorkflowExecution(this.userId, executionId, data);
   }
 }
 
@@ -796,6 +884,199 @@ class ZeroDB extends DurableObject<ZeroEnv> {
       .where(eq(skillReference.id, referenceId));
     return (result.rowCount ?? 0) > 0;
   }
+
+  // =========================================================================
+  // Workflow Methods
+  // =========================================================================
+
+  async findAllWorkflows(userId: string): Promise<(typeof workflow.$inferSelect)[]> {
+    return await this.db.query.workflow.findMany({
+      where: eq(workflow.userId, userId),
+      orderBy: asc(workflow.name),
+    });
+  }
+
+  async findWorkflow(
+    userId: string,
+    identifier: string,
+  ): Promise<typeof workflow.$inferSelect | null> {
+    // Try by ID first
+    let result = await this.db.query.workflow.findFirst({
+      where: eq(workflow.id, identifier),
+    });
+
+    if (!result) {
+      // Try by name
+      result = await this.db.query.workflow.findFirst({
+        where: and(eq(workflow.userId, userId), eq(workflow.name, identifier)),
+      });
+    }
+
+    // Verify ownership
+    if (result && result.userId !== userId) {
+      return null;
+    }
+
+    return result ?? null;
+  }
+
+  async createWorkflow(
+    userId: string,
+    payload: {
+      name: string;
+      description: string | null;
+      connectionId: string | null;
+      nodes: WorkflowNode[];
+      connections: WorkflowConnections;
+      settings: WorkflowSettings | null;
+      isEnabled: boolean;
+    },
+  ): Promise<typeof workflow.$inferSelect> {
+    const now = new Date();
+    const [created] = await this.db
+      .insert(workflow)
+      .values({
+        ...payload,
+        id: crypto.randomUUID(),
+        userId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    return created!;
+  }
+
+  async updateWorkflow(
+    userId: string,
+    workflowId: string,
+    data: Partial<{
+      name: string;
+      description: string;
+      connectionId: string;
+      nodes: WorkflowNode[];
+      connections: WorkflowConnections;
+      settings: WorkflowSettings;
+      isEnabled: boolean;
+    }>,
+  ): Promise<typeof workflow.$inferSelect | null> {
+    const [updated] = await this.db
+      .update(workflow)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(workflow.id, workflowId), eq(workflow.userId, userId)))
+      .returning();
+    return updated ?? null;
+  }
+
+  async deleteWorkflow(userId: string, workflowId: string): Promise<boolean> {
+    const result = await this.db
+      .delete(workflow)
+      .where(and(eq(workflow.id, workflowId), eq(workflow.userId, userId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // =========================================================================
+  // Workflow Execution Methods
+  // =========================================================================
+
+  async findWorkflowExecutions(
+    userId: string,
+    workflowId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<(typeof workflowExecution.$inferSelect)[]> {
+    // First verify the workflow belongs to this user
+    const wf = await this.findWorkflow(userId, workflowId);
+    if (!wf) return [];
+
+    const conditions = [eq(workflowExecution.workflowId, workflowId)];
+
+    if (cursor) {
+      // Cursor is the ID of the last execution, fetch older ones
+      const cursorExec = await this.db.query.workflowExecution.findFirst({
+        where: eq(workflowExecution.id, cursor),
+      });
+      if (cursorExec) {
+        conditions.push(
+          // Get executions started before the cursor
+          // Using raw SQL comparison for timestamp
+        );
+      }
+    }
+
+    return await this.db.query.workflowExecution.findMany({
+      where: and(...conditions),
+      orderBy: desc(workflowExecution.startedAt),
+      limit,
+    });
+  }
+
+  async findWorkflowExecution(
+    userId: string,
+    executionId: string,
+  ): Promise<typeof workflowExecution.$inferSelect | null> {
+    const execution = await this.db.query.workflowExecution.findFirst({
+      where: eq(workflowExecution.id, executionId),
+    });
+
+    if (!execution) return null;
+
+    // Verify the workflow belongs to this user
+    const wf = await this.findWorkflow(userId, execution.workflowId);
+    if (!wf) return null;
+
+    return execution;
+  }
+
+  async createWorkflowExecution(
+    userId: string,
+    payload: {
+      workflowId: string;
+      threadId: string | null;
+      status: ExecutionStatus;
+      triggerData: TriggerData | null;
+      nodeResults: NodeExecutionResult[] | null;
+      error: string | null;
+    },
+  ): Promise<typeof workflowExecution.$inferSelect> {
+    // Verify the workflow belongs to this user
+    const wf = await this.findWorkflow(userId, payload.workflowId);
+    if (!wf) {
+      throw new Error('Workflow not found or access denied');
+    }
+
+    const now = new Date();
+    const [created] = await this.db
+      .insert(workflowExecution)
+      .values({
+        ...payload,
+        id: crypto.randomUUID(),
+        startedAt: now,
+      })
+      .returning();
+    return created!;
+  }
+
+  async updateWorkflowExecution(
+    userId: string,
+    executionId: string,
+    data: Partial<{
+      status: ExecutionStatus;
+      nodeResults: NodeExecutionResult[];
+      error: string;
+      completedAt: Date;
+    }>,
+  ): Promise<typeof workflowExecution.$inferSelect | null> {
+    // First verify the execution exists and user owns the workflow
+    const existing = await this.findWorkflowExecution(userId, executionId);
+    if (!existing) return null;
+
+    const [updated] = await this.db
+      .update(workflowExecution)
+      .set(data)
+      .where(eq(workflowExecution.id, executionId))
+      .returning();
+    return updated ?? null;
+  }
 }
 
 // Utility function to hash IP addresses for PII protection
@@ -963,6 +1244,106 @@ const api = new Hono<HonoContext>()
   .on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {
     return c.var.auth.handler(c.req.raw);
   })
+  .post('/monitoring/sentry', async (c) => {
+    try {
+      const envelopeBytes = await c.req.arrayBuffer();
+      const envelope = new TextDecoder().decode(envelopeBytes);
+      const piece = envelope.split('\n')[0];
+      const header = JSON.parse(piece);
+      const dsn = new URL(header['dsn']);
+      const project_id = dsn.pathname?.replace('/', '');
+
+      if (dsn.hostname !== SENTRY_HOST) {
+        throw new Error(`Invalid sentry hostname: ${dsn.hostname}`);
+      }
+
+      if (!project_id || !SENTRY_PROJECT_IDS.has(project_id)) {
+        throw new Error(`Invalid sentry project id: ${project_id}`);
+      }
+
+      const upstream_sentry_url = `https://${SENTRY_HOST}/api/${project_id}/envelope/`;
+      await fetch(upstream_sentry_url, {
+        method: 'POST',
+        body: envelopeBytes,
+      });
+
+      return c.json({}, { status: 200 });
+    } catch (e) {
+      console.error('error tunneling to sentry', e);
+      return c.json({ error: 'error tunneling to sentry' }, { status: 500 });
+    }
+  })
+  .post('/a8n/notify/:providerId', async (c) => {
+    const tracer = initTracing();
+    const span = tracer.startSpan('a8n_notify', {
+      attributes: {
+        'provider.id': c.req.param('providerId'),
+        'notification.type': 'email_notification',
+        'http.method': c.req.method,
+        'http.url': c.req.url,
+      },
+    });
+
+    try {
+      if (!c.req.header('Authorization')) {
+        span.setAttributes({ 'auth.status': 'missing' });
+        return c.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      if (env.DISABLE_WORKFLOWS === 'true') {
+        span.setAttributes({ 'workflows.disabled': true });
+        return c.json({ message: 'OK' }, { status: 200 });
+      }
+      const providerId = c.req.param('providerId');
+      if (providerId === EProviders.google) {
+        const body = await c.req.json<{ historyId: string }>();
+        const subHeader = c.req.header('x-goog-pubsub-subscription-name');
+
+        span.setAttributes({
+          'history.id': body.historyId,
+          'subscription.name': subHeader || 'missing',
+        });
+
+        if (!subHeader) {
+          console.log('[GOOGLE] no subscription header', body);
+          span.setAttributes({ 'error.type': 'missing_subscription_header' });
+          return c.json({}, { status: 200 });
+        }
+        const isValid = await verifyToken(c.req.header('Authorization')!.split(' ')[1]);
+        if (!isValid) {
+          console.log('[GOOGLE] invalid request', body);
+          span.setAttributes({ 'auth.status': 'invalid' });
+          return c.json({}, { status: 200 });
+        }
+
+        span.setAttributes({ 'auth.status': 'valid' });
+
+        try {
+          await env.thread_queue.send({
+            providerId,
+            historyId: body.historyId,
+            subscriptionName: subHeader,
+          });
+          span.setAttributes({ 'queue.message_sent': true });
+        } catch (error) {
+          console.error('Error sending to thread queue', error, {
+            providerId,
+            historyId: body.historyId,
+            subscriptionName: subHeader,
+          });
+          span.recordException(error as Error);
+          span.setStatus({ code: 2, message: (error as Error).message });
+        }
+        return c.json({ message: 'OK' }, { status: 200 });
+      }
+    } catch (error) {
+      span.recordException(error as Error);
+      span.setStatus({ code: 2, message: (error as Error).message });
+      throw error;
+    } finally {
+      span.end();
+    }
+  })
+  .get('/health', (c) => c.json({ message: 'Zero Server is Up!' }))
   .use(
     trpcServer({
       endpoint: '/api/trpc',
@@ -1081,106 +1462,10 @@ const app = new Hono<HonoContext>()
       },
     }),
   )
-  .get('/health', (c) => c.json({ message: 'Zero Server is Up!' }))
   .get('/', (c) => c.redirect(`${env.VITE_PUBLIC_APP_URL}`))
   .post('/monitoring/sentry', async (c) => {
-    try {
-      const envelopeBytes = await c.req.arrayBuffer();
-      const envelope = new TextDecoder().decode(envelopeBytes);
-      const piece = envelope.split('\n')[0];
-      const header = JSON.parse(piece);
-      const dsn = new URL(header['dsn']);
-      const project_id = dsn.pathname?.replace('/', '');
-
-      if (dsn.hostname !== SENTRY_HOST) {
-        throw new Error(`Invalid sentry hostname: ${dsn.hostname}`);
-      }
-
-      if (!project_id || !SENTRY_PROJECT_IDS.has(project_id)) {
-        throw new Error(`Invalid sentry project id: ${project_id}`);
-      }
-
-      const upstream_sentry_url = `https://${SENTRY_HOST}/api/${project_id}/envelope/`;
-      await fetch(upstream_sentry_url, {
-        method: 'POST',
-        body: envelopeBytes,
-      });
-
-      return c.json({}, { status: 200 });
-    } catch (e) {
-      console.error('error tunneling to sentry', e);
-      return c.json({ error: 'error tunneling to sentry' }, { status: 500 });
-    }
-  })
-  .post('/a8n/notify/:providerId', async (c) => {
-    const tracer = initTracing();
-    const span = tracer.startSpan('a8n_notify', {
-      attributes: {
-        'provider.id': c.req.param('providerId'),
-        'notification.type': 'email_notification',
-        'http.method': c.req.method,
-        'http.url': c.req.url,
-      },
-    });
-
-    try {
-      if (!c.req.header('Authorization')) {
-        span.setAttributes({ 'auth.status': 'missing' });
-        return c.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-      if (env.DISABLE_WORKFLOWS === 'true') {
-        span.setAttributes({ 'workflows.disabled': true });
-        return c.json({ message: 'OK' }, { status: 200 });
-      }
-      const providerId = c.req.param('providerId');
-      if (providerId === EProviders.google) {
-        const body = await c.req.json<{ historyId: string }>();
-        const subHeader = c.req.header('x-goog-pubsub-subscription-name');
-
-        span.setAttributes({
-          'history.id': body.historyId,
-          'subscription.name': subHeader || 'missing',
-        });
-
-        if (!subHeader) {
-          console.log('[GOOGLE] no subscription header', body);
-          span.setAttributes({ 'error.type': 'missing_subscription_header' });
-          return c.json({}, { status: 200 });
-        }
-        const isValid = await verifyToken(c.req.header('Authorization')!.split(' ')[1]);
-        if (!isValid) {
-          console.log('[GOOGLE] invalid request', body);
-          span.setAttributes({ 'auth.status': 'invalid' });
-          return c.json({}, { status: 200 });
-        }
-
-        span.setAttributes({ 'auth.status': 'valid' });
-
-        try {
-          await env.thread_queue.send({
-            providerId,
-            historyId: body.historyId,
-            subscriptionName: subHeader,
-          });
-          span.setAttributes({ 'queue.message_sent': true });
-        } catch (error) {
-          console.error('Error sending to thread queue', error, {
-            providerId,
-            historyId: body.historyId,
-            subscriptionName: subHeader,
-          });
-          span.recordException(error as Error);
-          span.setStatus({ code: 2, message: (error as Error).message });
-        }
-        return c.json({ message: 'OK' }, { status: 200 });
-      }
-    } catch (error) {
-      span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message });
-      throw error;
-    } finally {
-      span.end();
-    }
+    // Legacy route support if needed at root, or just redirect
+    return c.redirect('/api/monitoring/sentry', 307);
   });
 const handler = {
   async fetch(request: Request, env: ZeroEnv, ctx: ExecutionContext): Promise<Response> {
@@ -1339,6 +1624,8 @@ export default class Entry extends WorkerEntrypoint<ZeroEnv> {
     await this.processScheduledEmails();
 
     await this.processExpiredSubscriptions();
+
+    await this.cleanupOldWorkflowExecutions();
   }
 
   private async processScheduledEmails() {
@@ -1484,6 +1771,31 @@ export default class Entry extends WorkerEntrypoint<ZeroEnv> {
     console.log(
       `[SCHEDULED] Processed ${allAccounts.keys.length} accounts, found ${expiredSubscriptions.length} expired subscriptions`,
     );
+  }
+
+  private async cleanupOldWorkflowExecutions() {
+    console.log('[SCHEDULED] Cleaning up old workflow executions...');
+
+    const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
+
+    try {
+      const retentionDays = 30;
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+      const result = await db
+        .delete(workflowExecution)
+        .where(lt(workflowExecution.startedAt, cutoffDate));
+
+      const deletedCount = result.rowCount ?? 0;
+      console.log(
+        `[SCHEDULED] Deleted ${deletedCount} workflow executions older than ${retentionDays} days`,
+      );
+    } catch (error) {
+      console.error('[SCHEDULED] Error cleaning up workflow executions:', error);
+    } finally {
+      await conn.end();
+    }
   }
 }
 

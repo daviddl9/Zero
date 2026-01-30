@@ -22,7 +22,7 @@ services:
       dockerfile: docker/nginx/Dockerfile
       args:
         VITE_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
-        VITE_PUBLIC_BACKEND_URL: ${BACKEND_URL:-http://localhost:3000/api}
+        VITE_PUBLIC_BACKEND_URL: ${BACKEND_URL:-http://localhost:3000}
     container_name: zero-nginx
     restart: unless-stopped
     ports:
