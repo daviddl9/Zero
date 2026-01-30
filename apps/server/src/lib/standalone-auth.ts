@@ -322,6 +322,7 @@ export function createStandaloneAuth(db: DB, redis: Redis) {
       },
     },
     baseURL: env.VITE_PUBLIC_BACKEND_URL,
+    basePath: '/auth', // Nginx strips /api prefix, so we serve auth at /auth/*
     trustedOrigins: [
       'https://app.0.email',
       'https://sapi.0.email',
