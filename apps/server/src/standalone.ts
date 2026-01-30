@@ -68,7 +68,7 @@ import { aiRouter } from './routes/ai';
 import { appRouter } from './trpc';
 
 // Types
-import type { HonoContext, HonoVariables, SessionUser } from './ctx';
+import type { HonoVariables, SessionUser } from './ctx';
 
 // Type definitions
 interface StandaloneConfig {
@@ -357,28 +357,28 @@ async function main() {
   // =========================================================================
   // API Routes
   // =========================================================================
-
-  // Create the API router
-  const api = new Hono<HonoContext>();
+  // Note: nginx strips /api prefix, so backend receives paths without /api
+  // e.g., /api/public/providers becomes /public/providers
 
   // AI routes
-  api.route('/ai', aiRouter);
+  app.route('/ai', aiRouter);
 
   // Autumn (billing) routes
-  api.route('/autumn', autumnApi);
+  app.route('/autumn', autumnApi);
 
   // Public routes (providers list)
-  api.route('/public', publicRouter);
+  app.route('/public', publicRouter);
 
   // Auth routes (better-auth handler)
-  api.on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {
+  app.on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {
     return auth.handler(c.req.raw);
   });
 
   // tRPC routes
-  api.use(
+  app.use(
+    '/trpc/*',
     trpcServer({
-      endpoint: '/api/trpc',
+      endpoint: '/trpc',
       router: appRouter,
       createContext: (_, c) => {
         return {
@@ -393,9 +393,6 @@ async function main() {
       },
     }),
   );
-
-  // Mount API routes
-  app.route('/api', api);
 
   // =========================================================================
   // Job Queue Routes
@@ -518,12 +515,12 @@ async function main() {
 
   console.log(`[Standalone] Server running at http://localhost:${config.port}`);
   console.log(`[Standalone] Bull Board UI at http://localhost:${config.port}/admin/queues`);
-  console.log('[Standalone] API routes available:');
-  console.log('  - /api/auth/*      - Authentication (better-auth)');
-  console.log('  - /api/trpc/*      - tRPC API');
-  console.log('  - /api/public/*    - Public routes');
-  console.log('  - /api/ai/*        - AI routes');
-  console.log('  - /api/autumn/*    - Billing routes');
+  console.log('[Standalone] API routes available (nginx proxies /api/* to /*)');
+  console.log('  - /auth/*      - Authentication (better-auth)');
+  console.log('  - /trpc/*      - tRPC API');
+  console.log('  - /public/*    - Public routes');
+  console.log('  - /ai/*        - AI routes');
+  console.log('  - /autumn/*    - Billing routes');
 }
 
 /**
