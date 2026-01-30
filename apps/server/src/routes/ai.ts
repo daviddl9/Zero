@@ -1,12 +1,38 @@
 import { systemPrompt } from '../services/call-service/system-prompt';
+import { isSelfHostedMode } from '../lib/self-hosted';
 import { openai } from '@ai-sdk/openai';
 import { tools } from './agent/tools';
 import { generateText } from 'ai';
 import { Tools } from '../types';
 import { createDb } from '../db';
-import { env } from '../env';
 import { Hono } from 'hono';
 import { z } from 'zod';
+
+// Helper to get environment variables - works in both Cloudflare and standalone modes
+function getEnvVar(name: string, defaultValue = ''): string {
+  if (isSelfHostedMode()) {
+    return process.env[name] || defaultValue;
+  }
+  try {
+    const { env } = require('../env');
+    return env[name] || defaultValue;
+  } catch {
+    return process.env[name] || defaultValue;
+  }
+}
+
+// Helper to get database connection string
+function getDatabaseUrl(): string {
+  if (isSelfHostedMode()) {
+    return process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zerodotemail';
+  }
+  try {
+    const { env } = require('../env');
+    return env.HYPERDRIVE?.connectionString || process.env.DATABASE_URL || '';
+  } catch {
+    return process.env.DATABASE_URL || '';
+  }
+}
 
 type ToolsReturnType = Awaited<ReturnType<typeof tools>>;
 
@@ -26,12 +52,12 @@ aiRouter.use('/do/*', async (c, next) => {
 });
 
 aiRouter.post('/do/:action', async (c) => {
-  //   if (env.DISABLE_CALLS) return c.json({ success: false, error: 'Not implemented' }, 400);
-  if (env.VOICE_SECRET !== c.req.header('X-Voice-Secret'))
+  //   if (getEnvVar('DISABLE_CALLS')) return c.json({ success: false, error: 'Not implemented' }, 400);
+  if (getEnvVar('VOICE_SECRET') !== c.req.header('X-Voice-Secret'))
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   const caller = c.req.header('X-Caller');
   if (!caller) return c.json({ success: false, error: 'Unauthorized' }, 401);
-  const { db, conn } = createDb(env.HYPERDRIVE.connectionString);
+  const { db, conn } = createDb(getDatabaseUrl());
   const user = await db.query.user.findFirst({
     where: (user, { eq, and }) =>
       and(eq(user.phoneNumber, caller), eq(user.phoneNumberVerified, true)),
@@ -72,12 +98,12 @@ aiRouter.post('/do/:action', async (c) => {
 aiRouter.post('/call', async (c) => {
   console.log('[DEBUG] Received call request');
 
-  if (env.DISABLE_CALLS) {
+  if (getEnvVar('DISABLE_CALLS')) {
     console.log('[DEBUG] Calls are disabled');
     return c.json({ success: false, error: 'Not implemented' }, 400);
   }
 
-  if (env.VOICE_SECRET !== c.req.header('X-Voice-Secret')) {
+  if (getEnvVar('VOICE_SECRET') !== c.req.header('X-Voice-Secret')) {
     console.log('[DEBUG] Invalid voice secret');
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
@@ -100,7 +126,7 @@ aiRouter.post('/call', async (c) => {
   }
 
   console.log('[DEBUG] Connecting to database');
-  const { db, conn } = createDb(env.HYPERDRIVE.connectionString);
+  const { db, conn } = createDb(getDatabaseUrl());
 
   console.log('[DEBUG] Finding user by phone number:', c.req.header('X-Caller'));
   const user = await db.query.user.findFirst({
@@ -129,7 +155,7 @@ aiRouter.post('/call', async (c) => {
   console.log('[DEBUG] Creating toolset for connection:', connection.id);
   const toolset = await tools(connection.id);
   const { text } = await generateText({
-    model: openai(env.OPENAI_MODEL || 'gpt-4o'),
+    model: openai(getEnvVar('OPENAI_MODEL', 'gpt-4o')),
     system: systemPrompt,
     prompt: data.query,
     tools: toolset,

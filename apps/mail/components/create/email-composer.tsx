@@ -17,25 +17,22 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Check, Command, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextEffect } from '@/components/motion-primitives/text-effect';
-import { ImageCompressionSettings } from './image-compression-settings';
-import { useActiveConnection } from '@/hooks/use-connections';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCorrectionTracker, useSelectionTracker } from '@/hooks/use-correction-tracker';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
-import type { ImageQuality } from '@/lib/image-compression';
+import { ScheduleSendPicker } from './schedule-send-picker';
 import useComposeEditor from '@/hooks/use-compose-editor';
 import { CurvedArrow, Sparkles, X } from '../icons/icons';
-import { compressImages } from '@/lib/image-compression';
 import { gitHubEmojis } from '@tiptap/extension-emoji';
 import { AnimatePresence, motion } from 'motion/react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Avatar, AvatarFallback } from '../ui/avatar';
+
 import { useTRPC } from '@/providers/query-provider';
 import { useMutation } from '@tanstack/react-query';
 import { useSettings } from '@/hooks/use-settings';
 
 import { cn, formatFileSize } from '@/lib/utils';
-import { useThread } from '@/hooks/use-threads';
 import { serializeFiles } from '@/lib/schemas';
 import { Input } from '@/components/ui/input';
 import { EditorContent } from '@tiptap/react';
@@ -46,16 +43,16 @@ import { Toolbar } from './toolbar';
 import pluralize from 'pluralize';
 import { toast } from 'sonner';
 import { z } from 'zod';
+
+import { RecipientAutosuggest } from '@/components/ui/recipient-autosuggest';
+import { ImageCompressionSettings } from './image-compression-settings';
+import { DraftSelector, type Draft } from './draft-selector';
+import type { ImageQuality } from '@/lib/image-compression';
+import { compressImages } from '@/lib/image-compression';
+import { AgentThinkingAccordion } from '../mail/ai-thinking-accordion';
+
 const shortcodeRegex = /:([a-zA-Z0-9_+-]+):/g;
 import { TemplateButton } from './template-button';
-
-type ThreadContent = {
-  from: string;
-  to: string[];
-  body: string;
-  cc?: string[];
-  subject: string;
-}[];
 
 interface EmailComposerProps {
   initialTo?: string[];
@@ -73,6 +70,7 @@ interface EmailComposerProps {
     message: string;
     attachments: File[];
     fromEmail?: string;
+    scheduleAt?: string;
   }) => Promise<void>;
   onClose?: () => void;
   className?: string;
@@ -80,16 +78,6 @@ interface EmailComposerProps {
   settingsLoading?: boolean;
   editorClassName?: string;
 }
-
-const isValidEmail = (email: string): boolean => {
-  // for format like test@example.com
-  const simpleEmailRegex = /^[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-  // for format like name <test@example.com>
-  const displayNameEmailRegex = /^.+\s*<\s*[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\s*>$/;
-
-  return simpleEmailRegex.test(email) || displayNameEmailRegex.test(email);
-};
 
 const schema = z.object({
   to: z.array(z.string().email()).min(1),
@@ -126,25 +114,18 @@ export function EmailComposer({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [messageLength, setMessageLength] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const toInputRef = useRef<HTMLInputElement>(null);
-  const ccInputRef = useRef<HTMLInputElement>(null);
-  const bccInputRef = useRef<HTMLInputElement>(null);
   const [threadId] = useQueryState('threadId');
-  const [mode] = useQueryState('mode');
   const [isComposeOpen, setIsComposeOpen] = useQueryState('isComposeOpen');
-  const { data: emailData } = useThread(threadId ?? null);
   const [draftId, setDraftId] = useQueryState('draftId');
   const [aiGeneratedMessage, setAiGeneratedMessage] = useState<string | null>(null);
+  const [generatedDrafts, setGeneratedDrafts] = useState<Draft[] | null>(null);
   const [aiIsLoading, setAiIsLoading] = useState(false);
+  const [agentSteps, setAgentSteps] = useState<string[]>([]);
+  const [agentIsThinking, setAgentIsThinking] = useState(false);
   const [isGeneratingSubject, setIsGeneratingSubject] = useState(false);
-  const [isAddingRecipients, setIsAddingRecipients] = useState(false);
-  const [isAddingCcRecipients, setIsAddingCcRecipients] = useState(false);
-  const [isAddingBccRecipients, setIsAddingBccRecipients] = useState(false);
-  const toWrapperRef = useRef<HTMLDivElement>(null);
-  const ccWrapperRef = useRef<HTMLDivElement>(null);
-  const bccWrapperRef = useRef<HTMLDivElement>(null);
-  const { data: activeConnection } = useActiveConnection();
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState<string>();
+  const [isScheduleValid, setIsScheduleValid] = useState<boolean>(true);
   const [showAttachmentWarning, setShowAttachmentWarning] = useState(false);
   const [originalAttachments, setOriginalAttachments] = useState<File[]>(initialAttachments);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(
@@ -220,28 +201,6 @@ export function EmailComposer({
     }
   };
 
-  // Add this function to handle clicks outside the input fields
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (toWrapperRef.current && !toWrapperRef.current.contains(event.target as Node)) {
-        setIsAddingRecipients(false);
-      }
-      if (ccWrapperRef.current && !ccWrapperRef.current.contains(event.target as Node)) {
-        setIsAddingCcRecipients(false);
-      }
-      if (bccWrapperRef.current && !bccWrapperRef.current.contains(event.target as Node)) {
-        setIsAddingBccRecipients(false);
-      }
-    }
-
-    // Add event listener
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      // Remove event listener on cleanup
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const attachmentKeywords = [
     'attachment',
     'attached',
@@ -251,16 +210,17 @@ export function EmailComposer({
   ];
 
   const trpc = useTRPC();
-  const { mutateAsync: aiCompose } = useMutation(trpc.ai.compose.mutationOptions());
+  const { mutateAsync: agentGenerateDrafts } = useMutation(
+    trpc.ai.agent.generateDrafts.mutationOptions(),
+  );
   const { mutateAsync: createDraft } = useMutation(trpc.drafts.create.mutationOptions());
   const { mutateAsync: generateEmailSubject } = useMutation(
     trpc.ai.generateEmailSubject.mutationOptions(),
   );
-  useEffect(() => {
-    if (isComposeOpen === 'true' && toInputRef.current) {
-      toInputRef.current.focus();
-    }
-  }, [isComposeOpen]);
+
+  // Memory learning hooks
+  const { trackAiDraft, submitCorrection, clearTracking } = useCorrectionTracker();
+  const { trackSelection } = useSelectionTracker();
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -279,92 +239,6 @@ export function EmailComposer({
     },
   });
 
-  useEffect(() => {
-    // Don't populate from threadId if we're in compose mode
-    if (isComposeOpen === 'true') return;
-
-    if (!emailData?.latest || !mode || !activeConnection?.email) return;
-
-    const userEmail = activeConnection.email.toLowerCase();
-    const latestEmail = emailData.latest;
-    const senderEmail = latestEmail.replyTo;
-
-    // Reset states
-    form.reset();
-    setShowCc(false);
-    setShowBcc(false);
-
-    // Set subject based on mode
-    const subject =
-      mode === 'forward'
-        ? `Fwd: ${latestEmail.subject || ''}`
-        : latestEmail.subject?.startsWith('Re:')
-          ? latestEmail.subject
-          : `Re: ${latestEmail.subject || ''}`;
-    form.setValue('subject', subject);
-
-    if (mode === 'reply') {
-      // Reply to sender
-      form.setValue('to', [latestEmail.sender.email]);
-    } else if (mode === 'replyAll') {
-      const to: string[] = [];
-      const cc: string[] = [];
-
-      // Add original sender if not current user
-      if (senderEmail !== userEmail) {
-        to.push(latestEmail.replyTo || latestEmail.sender.email);
-      }
-
-      // Add original recipients from To field
-      latestEmail.to?.forEach((recipient) => {
-        const recipientEmail = recipient.email.toLowerCase();
-        if (recipientEmail !== userEmail && recipientEmail !== senderEmail) {
-          to.push(recipient.email);
-        }
-      });
-
-      // Add CC recipients
-      latestEmail.cc?.forEach((recipient) => {
-        const recipientEmail = recipient.email.toLowerCase();
-        if (recipientEmail !== userEmail && !to.includes(recipient.email)) {
-          cc.push(recipient.email);
-        }
-      });
-
-      // Add BCC recipients
-      latestEmail.bcc?.forEach((recipient) => {
-        const recipientEmail = recipient.email.toLowerCase();
-        if (
-          recipientEmail !== userEmail &&
-          !to.includes(recipient.email) &&
-          !cc.includes(recipient.email)
-        ) {
-          form.setValue('bcc', [...(bccEmails || []), recipient.email]);
-          setShowBcc(true);
-        }
-      });
-
-      form.setValue('to', to);
-      if (cc.length > 0) {
-        form.setValue('cc', cc);
-        setShowCc(true);
-      }
-    }
-    // For forward, we start with empty recipients
-  }, [mode, emailData?.latest, activeConnection?.email]);
-
-  // keep fromEmail in sync when settings or aliases load afterwards
-  useEffect(() => {
-    const preferred =
-      settings?.settings?.defaultEmailAlias ??
-      aliases?.find((a) => a.primary)?.email ??
-      aliases?.[0]?.email;
-
-    if (preferred && form.getValues('fromEmail') !== preferred) {
-      form.setValue('fromEmail', preferred, { shouldDirty: false });
-    }
-  }, [settings?.settings?.defaultEmailAlias, aliases]);
-
   const { watch, setValue, getValues } = form;
   const toEmails = watch('to');
   const ccEmails = watch('cc');
@@ -372,6 +246,15 @@ export function EmailComposer({
   const subjectInput = watch('subject');
   const attachments = watch('attachments');
   const fromEmail = watch('fromEmail');
+
+  // Update form values when initial props change (e.g., when replying/replyAll calculates recipients)
+  useEffect(() => {
+    if (initialTo.length > 0 || initialCc.length > 0 || initialSubject) {
+      setValue('to', initialTo, { shouldDirty: false });
+      setValue('cc', initialCc, { shouldDirty: false });
+      setValue('subject', initialSubject, { shouldDirty: false });
+    }
+  }, [initialTo, initialCc, initialSubject, setValue]);
 
   const handleAttachment = async (newFiles: File[]) => {
     if (newFiles && newFiles.length > 0) {
@@ -415,6 +298,13 @@ export function EmailComposer({
       return () => clearTimeout(timeoutId);
     }
   }, [editor, autofocus]);
+
+  // Remove the TRPC query - we'll use the component's internal logic instead
+  useEffect(() => {
+    if (isComposeOpen === 'true' && editor) {
+      editor.commands.focus();
+    }
+  }, [isComposeOpen, editor]);
 
   // Prevent browser navigation/refresh when there's unsaved content
   useEffect(() => {
@@ -463,8 +353,32 @@ export function EmailComposer({
         return;
       }
 
+      if (!isScheduleValid) {
+        toast.error('Please choose a valid date & time for scheduling');
+        return;
+      }
+
       setIsLoading(true);
       setAiGeneratedMessage(null);
+      setGeneratedDrafts(null);
+
+      // Submit correction to memory system if AI draft was edited
+      const currentContent = editor.getText();
+      const primaryRecipient = values.to[0] ?? '';
+      const subjectKeywords = values.subject
+        .split(/\s+/)
+        .filter((word) => word.length > 3)
+        .slice(0, 5);
+
+      // Fire-and-forget - don't block sending
+      submitCorrection({
+        currentContent,
+        recipientEmail: primaryRecipient,
+        subjectKeywords,
+      }).catch(() => {
+        // Silently ignore errors - learning is non-critical
+      });
+
       // Save draft before sending, we want to send drafts instead of sending new emails
       if (hasUnsavedChanges) await saveDraft();
 
@@ -476,6 +390,7 @@ export function EmailComposer({
         message: editor.getHTML(),
         attachments: values.attachments || [],
         fromEmail: values.fromEmail,
+        scheduleAt,
       });
       setHasUnsavedChanges(false);
       editor.commands.clearContent(true);
@@ -505,64 +420,60 @@ export function EmailComposer({
     await proceedWithSend();
   };
 
-  const threadContent: ThreadContent = useMemo(() => {
-    if (!emailData) return [];
-    return emailData.messages.map((message) => {
-      return {
-        body: message.decodedBody ?? '',
-        from: message.sender.name ?? message.sender.email,
-        to: message.to.reduce<string[]>((to, recipient) => {
-          if (recipient.name) {
-            to.push(recipient.name);
-          }
-          return to;
-        }, []),
-        cc: message.cc?.reduce<string[]>((cc, recipient) => {
-          if (recipient.name) {
-            cc.push(recipient.name);
-          }
-          return cc;
-        }, []),
-        subject: message.subject,
-      };
-    });
-  }, [emailData]);
-
   const handleAiGenerate = async () => {
     try {
       setIsLoading(true);
       setAiIsLoading(true);
+      setAgentIsThinking(true);
+      setAgentSteps([]);
       const values = getValues();
 
-      const result = await aiCompose({
-        prompt: editor.getText(),
-        emailSubject: values.subject,
-        to: values.to,
-        cc: values.cc,
-        threadMessages: threadContent,
+      const result = await agentGenerateDrafts({
+        recipientEmail: values.to[0],
+        userPoints: editor.getText(),
       });
 
-      setAiGeneratedMessage(result.newBody);
-      // toast.success('Email generated successfully');
+      if (result.steps) {
+        setAgentSteps(result.steps);
+      }
+
+      // If we have multiple drafts, show the draft selector
+      if (result.drafts && result.drafts.length > 1) {
+        const drafts: Draft[] = result.drafts.map((body, index) => ({
+          id: `ai-${index}`,
+          body,
+          approach: index === 0 ? 'Response Option A' : 'Response Option B',
+        }));
+        setGeneratedDrafts(drafts);
+        setAiGeneratedMessage(null);
+      } else {
+        // Fall back to single draft behavior
+        setAiGeneratedMessage(result.drafts?.[0] || '');
+        setGeneratedDrafts(null);
+      }
     } catch (error) {
       console.error('Error generating AI email:', error);
       toast.error('Failed to generate email');
     } finally {
       setIsLoading(false);
       setAiIsLoading(false);
+      setAgentIsThinking(false);
     }
   };
 
-  const saveDraft = async () => {
+  const saveDraft = useCallback(async () => {
     const values = getValues();
 
     if (!hasUnsavedChanges) return;
+    if (!editor) return;
     const messageText = editor.getText();
 
     if (messageText.trim() === initialMessage.trim()) return;
     if (editor.getHTML() === initialMessage.trim()) return;
     if (!values.to.length || !values.subject.length || !messageText.length) return;
-    if (aiGeneratedMessage || aiIsLoading || isGeneratingSubject) return;
+    if (aiGeneratedMessage || aiIsLoading || isGeneratingSubject || generatedDrafts) {
+      return;
+    }
 
     try {
       setIsSavingDraft(true);
@@ -592,7 +503,20 @@ export function EmailComposer({
       setIsSavingDraft(false);
       setHasUnsavedChanges(false);
     }
-  };
+  }, [
+    hasUnsavedChanges,
+    editor,
+    initialMessage,
+    getValues,
+    aiGeneratedMessage,
+    aiIsLoading,
+    isGeneratingSubject,
+    generatedDrafts,
+    draftId,
+    threadId,
+    createDraft,
+    setDraftId,
+  ]);
 
   const handleGenerateSubject = async () => {
     try {
@@ -688,10 +612,30 @@ export function EmailComposer({
   //   await handleAiGenerate();
   // });
 
+  // keep fromEmail in sync when settings or aliases load afterwards
+  useEffect(() => {
+    const preferred =
+      settings?.settings?.defaultEmailAlias ??
+      aliases?.find((a) => a.primary)?.email ??
+      aliases?.[0]?.email;
+
+    if (preferred && getValues('fromEmail') !== preferred) {
+      setValue('fromEmail', preferred, { shouldDirty: false });
+    }
+  }, [settings?.settings?.defaultEmailAlias, aliases, getValues, setValue]);
+
   const handleQualityChange = async (newQuality: ImageQuality) => {
     setImageQuality(newQuality);
     await processAndSetAttachments(originalAttachments, newQuality, true);
   };
+
+  const handleScheduleChange = useCallback((value?: string) => {
+    setScheduleAt(value);
+  }, []);
+
+  const handleScheduleValidityChange = useCallback((valid: boolean) => {
+    setIsScheduleValid(valid);
+  }, []);
 
   const replaceEmojiShortcodes = (text: string): string => {
     if (!text.trim().length || !text.includes(':')) return text;
@@ -712,208 +656,29 @@ export function EmailComposer({
     >
       <div className="no-scrollbar dark:bg-panelDark flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl">
         {/* To, Cc, Bcc */}
-        <div className="shrink-0 overflow-y-auto border-b border-[#E7E7E7] pb-2 dark:border-[#252525]">
+        <div className="shrink-0 overflow-visible border-b border-[#E7E7E7] pb-2 dark:border-[#252525]">
           <div className="flex justify-between px-3 pt-3">
-            <div
-              onClick={() => {
-                setIsAddingRecipients(true);
-                setTimeout(() => {
-                  if (toInputRef.current) {
-                    toInputRef.current.focus();
-                  }
-                }, 0);
-              }}
-              className="flex w-full items-center gap-2"
-            >
+            <div className="flex w-full items-center gap-2">
               <p className="text-sm font-medium text-[#8C8C8C]">To:</p>
-              {isAddingRecipients || toEmails.length === 0 ? (
-                <div ref={toWrapperRef} className="flex flex-wrap items-center gap-2">
-                  {toEmails.map((email, index) => (
-                    <div
-                      key={email}
-                      className="flex items-center gap-1 rounded-full border px-1 py-0.5 pr-2"
-                    >
-                      <span className="flex gap-1 py-0.5 text-sm text-black dark:text-white">
-                        <Avatar className="h-5 w-5">
-                          <AvatarFallback className="bg-offsetLight text-muted-foreground dark:bg-muted rounded-full text-xs font-bold dark:text-[#9B9B9B]">
-                            {email.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="max-w-[50vw] overflow-hidden text-ellipsis whitespace-nowrap md:max-w-[30vw]">
-                          {email}
-                        </span>
-                      </span>
-                      <button
-                        onClick={() => {
-                          setValue(
-                            'to',
-                            toEmails.filter((_, i) => i !== index),
-                          );
-                          setHasUnsavedChanges(true);
-                        }}
-                        className="text-white/50 hover:text-white/90"
-                      >
-                        <X className="mt-0.5 h-3.5 w-3.5 fill-black dark:fill-[#9A9A9A]" />
-                      </button>
-                    </div>
-                  ))}
-                  <input
-                    ref={toInputRef}
-                    className="h-6 flex-1 bg-transparent text-sm font-normal leading-normal text-black placeholder:text-[#797979] focus:outline-none dark:text-white"
-                    placeholder="Enter email"
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const pastedText = e.clipboardData.getData('text');
-                      const emails = pastedText
-                        .split(/[,;\s]+/)
-                        .map((email) => email.trim())
-                        .filter((email) => email.length > 0);
-
-                      const validEmails: string[] = [];
-                      const invalidEmails: string[] = [];
-
-                      emails.forEach((email) => {
-                        if (isValidEmail(email)) {
-                          const emailLower = email.toLowerCase();
-                          if (!toEmails.some((e) => e.toLowerCase() === emailLower)) {
-                            validEmails.push(email);
-                          }
-                        } else {
-                          invalidEmails.push(email);
-                        }
-                      });
-
-                      if (validEmails.length > 0) {
-                        setValue('to', [...toEmails, ...validEmails]);
-                        setHasUnsavedChanges(true);
-                        if (validEmails.length === 1) {
-                          toast.success('Email address added');
-                        } else {
-                          toast.success(`${validEmails.length} email addresses added`);
-                        }
-                      }
-
-                      if (invalidEmails.length > 0) {
-                        toast.error(
-                          `Invalid email ${invalidEmails.length === 1 ? 'address' : 'addresses'}: ${invalidEmails.join(', ')}`,
-                        );
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                        e.preventDefault();
-                        if (isValidEmail(e.currentTarget.value.trim())) {
-                          if (toEmails.includes(e.currentTarget.value.trim())) {
-                            toast.error('This email is already in the list');
-                          } else {
-                            setValue('to', [...toEmails, e.currentTarget.value.trim()]);
-                            e.currentTarget.value = '';
-                            setHasUnsavedChanges(true);
-                          }
-                        } else {
-                          toast.error('Please enter a valid email address');
-                        }
-                      } else if (
-                        (e.key === ' ' && e.currentTarget.value.trim()) ||
-                        (e.key === 'Tab' && e.currentTarget.value.trim())
-                      ) {
-                        e.preventDefault();
-                        if (isValidEmail(e.currentTarget.value.trim())) {
-                          if (toEmails.includes(e.currentTarget.value.trim())) {
-                            toast.error('This email is already in the list');
-                          } else {
-                            setValue('to', [...toEmails, e.currentTarget.value.trim()]);
-                            e.currentTarget.value = '';
-                            setHasUnsavedChanges(true);
-                          }
-                        } else {
-                          toast.error('Please enter a valid email address');
-                        }
-                      } else if (
-                        e.key === 'Backspace' &&
-                        !e.currentTarget.value &&
-                        toEmails.length > 0
-                      ) {
-                        setValue('to', toEmails.slice(0, -1));
-                        setHasUnsavedChanges(true);
-                      }
-                    }}
-                    onFocus={() => {
-                      setIsAddingRecipients(true);
-                    }}
-                    onBlur={(e) => {
-                      if (e.currentTarget.value.trim()) {
-                        if (isValidEmail(e.currentTarget.value.trim())) {
-                          if (toEmails.includes(e.currentTarget.value.trim())) {
-                            toast.error('This email is already in the list');
-                          } else {
-                            setValue('to', [...toEmails, e.currentTarget.value.trim()]);
-                            e.currentTarget.value = '';
-                            setHasUnsavedChanges(true);
-                          }
-                        } else {
-                          toast.error('Please enter a valid email address');
-                        }
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="flex min-h-6 flex-1 cursor-pointer items-center text-sm text-black dark:text-white">
-                  {toEmails.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1">
-                      {toEmails.slice(0, 3).map((email, index) => (
-                        <div
-                          key={email}
-                          className="flex items-center gap-1 rounded-full border px-1 py-0.5 pr-2"
-                        >
-                          <span className="flex gap-1 py-0.5 text-sm text-black dark:text-white">
-                            <Avatar className="h-5 w-5">
-                              <AvatarFallback className="bg-offsetLight text-muted-foreground rounded-full text-xs font-bold dark:bg-[#373737] dark:text-[#9B9B9B]">
-                                {email.charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="max-w-[50vw] overflow-hidden text-ellipsis whitespace-nowrap md:max-w-[30vw]">
-                              {/* for email format: "Display Name" <email@example.com> */}
-                              {email.match(/^"?(.*?)"?\s*<[^>]+>$/)?.[1] ?? email}
-                            </span>
-                          </span>
-                          <button
-                            onClick={() => {
-                              setValue(
-                                'to',
-                                toEmails.filter((_, i) => i !== index),
-                              );
-                              setHasUnsavedChanges(true);
-                            }}
-                            className="text-white/50 hover:text-white/90"
-                          >
-                            <X className="mt-0.5 h-3.5 w-3.5 fill-black dark:fill-[#9A9A9A]" />
-                          </button>
-                        </div>
-                      ))}
-                      {toEmails.length > 3 && (
-                        <span className="ml-1 text-center text-[#8C8C8C]">
-                          +{toEmails.length - 3} more
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+              <RecipientAutosuggest
+                control={form.control}
+                name="to"
+                placeholder="Enter email address"
+                disabled={isLoading}
+              />
             </div>
 
             <div className="flex gap-2">
               <button
                 tabIndex={-1}
-                className="flex h-full items-center gap-2 text-sm font-medium text-[#8C8C8C] hover:text-[#A8A8A8]"
+                className="flex h-full cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm font-medium text-[#8C8C8C] transition-colors hover:bg-gray-50 hover:text-[#A8A8A8] dark:hover:bg-[#404040]"
                 onClick={() => setShowCc(!showCc)}
               >
                 <span>Cc</span>
               </button>
               <button
                 tabIndex={-1}
-                className="flex h-full items-center gap-2 text-sm font-medium text-[#8C8C8C] hover:text-[#A8A8A8]"
+                className="flex h-full cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm font-medium text-[#8C8C8C] transition-colors hover:bg-gray-50 hover:text-[#A8A8A8] dark:hover:bg-[#404040]"
                 onClick={() => setShowBcc(!showBcc)}
               >
                 <span>Bcc</span>
@@ -921,7 +686,7 @@ export function EmailComposer({
               {onClose && (
                 <button
                   tabIndex={-1}
-                  className="flex h-full items-center gap-2 text-sm font-medium text-[#8C8C8C] hover:text-[#A8A8A8]"
+                  className="flex h-full cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm font-medium text-[#8C8C8C] transition-colors hover:bg-gray-50 hover:text-[#A8A8A8] dark:hover:bg-[#404040]"
                   onClick={handleClose}
                 >
                   <X className="h-3.5 w-3.5 fill-[#9A9A9A]" />
@@ -933,293 +698,27 @@ export function EmailComposer({
           <div className={`flex flex-col gap-2 ${showCc || showBcc ? 'pt-2' : ''}`}>
             {/* CC Section */}
             {showCc && (
-              <div
-                onClick={() => {
-                  setIsAddingCcRecipients(true);
-                  setTimeout(() => {
-                    if (ccInputRef.current) {
-                      ccInputRef.current.focus();
-                    }
-                  }, 0);
-                }}
-                className="flex items-center gap-2 px-3"
-              >
+              <div className="flex items-center gap-2 px-3">
                 <p className="text-sm font-medium text-[#8C8C8C]">Cc:</p>
-                {isAddingCcRecipients || (ccEmails && ccEmails.length === 0) ? (
-                  <div ref={ccWrapperRef} className="flex flex-1 flex-wrap items-center gap-2">
-                    {ccEmails?.map((email, index) => (
-                      <div
-                        key={email}
-                        className="flex items-center gap-1 rounded-full border px-2 py-0.5"
-                      >
-                        <span className="flex gap-1 py-0.5 text-sm text-black dark:text-white">
-                          <Avatar className="h-5 w-5">
-                            <AvatarFallback className="bg-offsetLight text-muted-foreground rounded-full text-xs font-bold dark:bg-[#373737] dark:text-[#9B9B9B]">
-                              {email.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          {email}
-                        </span>
-                        <button
-                          onClick={() => {
-                            setValue(
-                              'cc',
-                              ccEmails.filter((_, i) => i !== index),
-                            );
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="text-white/50 hover:text-white/90"
-                        >
-                          <X className="mt-0.5 h-3.5 w-3.5 fill-black dark:fill-[#9A9A9A]" />
-                        </button>
-                      </div>
-                    ))}
-                    <input
-                      ref={ccInputRef}
-                      className="h-6 flex-1 bg-transparent text-sm font-normal leading-normal text-black placeholder:text-[#797979] focus:outline-none dark:text-white"
-                      placeholder="Enter email"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                          e.preventDefault();
-                          if (isValidEmail(e.currentTarget.value.trim())) {
-                            if (ccEmails?.includes(e.currentTarget.value.trim())) {
-                              toast.error('This email is already in the list');
-                            } else {
-                              setValue('cc', [...(ccEmails || []), e.currentTarget.value.trim()]);
-                              e.currentTarget.value = '';
-                              setHasUnsavedChanges(true);
-                            }
-                          } else {
-                            toast.error('Please enter a valid email address');
-                          }
-                        } else if (e.key === ' ' && e.currentTarget.value.trim()) {
-                          e.preventDefault();
-                          if (isValidEmail(e.currentTarget.value.trim())) {
-                            if (ccEmails?.includes(e.currentTarget.value.trim())) {
-                              toast.error('This email is already in the list');
-                            } else {
-                              setValue('cc', [...(ccEmails || []), e.currentTarget.value.trim()]);
-                              e.currentTarget.value = '';
-                              setHasUnsavedChanges(true);
-                            }
-                          } else {
-                            toast.error('Please enter a valid email address');
-                          }
-                        } else if (
-                          e.key === 'Backspace' &&
-                          !e.currentTarget.value &&
-                          ccEmails?.length
-                        ) {
-                          setValue('cc', ccEmails.slice(0, -1));
-                          setHasUnsavedChanges(true);
-                        }
-                      }}
-                      onFocus={() => {
-                        setIsAddingCcRecipients(true);
-                      }}
-                      onBlur={(e) => {
-                        if (e.currentTarget.value.trim()) {
-                          if (isValidEmail(e.currentTarget.value.trim())) {
-                            if (ccEmails?.includes(e.currentTarget.value.trim())) {
-                              toast.error('This email is already in the list');
-                            } else {
-                              setValue('cc', [...(ccEmails || []), e.currentTarget.value.trim()]);
-                              e.currentTarget.value = '';
-                              setHasUnsavedChanges(true);
-                            }
-                          } else {
-                            toast.error('Please enter a valid email address');
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex min-h-6 flex-1 cursor-pointer items-center text-sm text-black dark:text-white">
-                    {ccEmails && ccEmails.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {ccEmails.slice(0, 3).map((email, index) => (
-                          <div
-                            key={email}
-                            className="flex items-center gap-1 rounded-full border px-1 py-0.5 pr-2"
-                          >
-                            <span className="flex gap-1 py-0.5 text-sm text-black dark:text-white">
-                              <Avatar className="h-5 w-5">
-                                <AvatarFallback className="bg-offsetLight text-muted-foreground rounded-full text-xs font-bold dark:bg-[#373737] dark:text-[#9B9B9B]">
-                                  {email.charAt(0).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              {email}
-                            </span>
-                            <button
-                              onClick={() => {
-                                setValue(
-                                  'cc',
-                                  ccEmails.filter((_, i) => i !== index),
-                                );
-                                setHasUnsavedChanges(true);
-                              }}
-                              className="text-white/50 hover:text-white/90"
-                            >
-                              <X className="mt-0.5 h-3.5 w-3.5 fill-black dark:fill-[#9A9A9A]" />
-                            </button>
-                          </div>
-                        ))}
-                        {ccEmails.length > 3 && (
-                          <span className="ml-1 text-center text-[#8C8C8C]">
-                            +{ccEmails.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <RecipientAutosuggest
+                  control={form.control}
+                  name="cc"
+                  placeholder="Enter email for Cc"
+                  disabled={isLoading}
+                />
               </div>
             )}
 
             {/* BCC Section */}
             {showBcc && (
-              <div
-                onClick={() => {
-                  setIsAddingBccRecipients(true);
-                  setTimeout(() => {
-                    if (bccInputRef.current) {
-                      bccInputRef.current.focus();
-                    }
-                  }, 0);
-                }}
-                className="flex items-center gap-2 px-3"
-              >
+              <div className="flex items-center gap-2 px-3">
                 <p className="text-sm font-medium text-[#8C8C8C]">Bcc:</p>
-                {isAddingBccRecipients || (bccEmails && bccEmails.length === 0) ? (
-                  <div ref={bccWrapperRef} className="flex flex-1 flex-wrap items-center gap-2">
-                    {bccEmails?.map((email, index) => (
-                      <div
-                        key={email}
-                        className="flex items-center gap-1 rounded-full border px-2 py-0.5"
-                      >
-                        <span className="flex gap-1 py-0.5 text-sm text-black dark:text-white">
-                          <Avatar className="h-5 w-5">
-                            <AvatarFallback className="bg-offsetLight text-muted-foreground rounded-full text-xs font-bold dark:bg-[#373737] dark:text-[#9B9B9B]">
-                              {email.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          {email}
-                        </span>
-                        <button
-                          onClick={() => {
-                            setValue(
-                              'bcc',
-                              bccEmails.filter((_, i) => i !== index),
-                            );
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="text-white/50 hover:text-white/90"
-                        >
-                          <X className="mt-0.5 h-3.5 w-3.5 fill-black dark:fill-[#9A9A9A]" />
-                        </button>
-                      </div>
-                    ))}
-                    <input
-                      ref={bccInputRef}
-                      className="h-6 flex-1 bg-transparent text-sm font-normal leading-normal text-black placeholder:text-[#797979] focus:outline-none dark:text-white"
-                      placeholder="Enter email"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                          e.preventDefault();
-                          if (isValidEmail(e.currentTarget.value.trim())) {
-                            if (bccEmails?.includes(e.currentTarget.value.trim())) {
-                              toast.error('This email is already in the list');
-                            } else {
-                              setValue('bcc', [...(bccEmails || []), e.currentTarget.value.trim()]);
-                              e.currentTarget.value = '';
-                              setHasUnsavedChanges(true);
-                            }
-                          } else {
-                            toast.error('Please enter a valid email address');
-                          }
-                        } else if (e.key === ' ' && e.currentTarget.value.trim()) {
-                          e.preventDefault();
-                          if (isValidEmail(e.currentTarget.value.trim())) {
-                            if (bccEmails?.includes(e.currentTarget.value.trim())) {
-                              toast.error('This email is already in the list');
-                            } else {
-                              setValue('bcc', [...(bccEmails || []), e.currentTarget.value.trim()]);
-                              e.currentTarget.value = '';
-                              setHasUnsavedChanges(true);
-                            }
-                          } else {
-                            toast.error('Please enter a valid email address');
-                          }
-                        } else if (
-                          e.key === 'Backspace' &&
-                          !e.currentTarget.value &&
-                          bccEmails?.length
-                        ) {
-                          setValue('bcc', bccEmails.slice(0, -1));
-                          setHasUnsavedChanges(true);
-                        }
-                      }}
-                      onFocus={() => {
-                        setIsAddingBccRecipients(true);
-                      }}
-                      onBlur={(e) => {
-                        if (e.currentTarget.value.trim()) {
-                          if (isValidEmail(e.currentTarget.value.trim())) {
-                            if (bccEmails?.includes(e.currentTarget.value.trim())) {
-                              toast.error('This email is already in the list');
-                            } else {
-                              setValue('bcc', [...(bccEmails || []), e.currentTarget.value.trim()]);
-                              e.currentTarget.value = '';
-                              setHasUnsavedChanges(true);
-                            }
-                          } else {
-                            toast.error('Please enter a valid email address');
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex min-h-6 flex-1 cursor-pointer items-center text-sm text-black dark:text-white">
-                    {bccEmails && bccEmails.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {bccEmails.slice(0, 3).map((email, index) => (
-                          <div
-                            key={email}
-                            className="flex items-center gap-1 rounded-full border px-1 py-0.5 pr-2"
-                          >
-                            <span className="flex gap-1 py-0.5 text-sm text-black dark:text-white">
-                              <Avatar className="h-5 w-5">
-                                <AvatarFallback className="bg-offsetLight text-muted-foreground rounded-full text-xs font-bold dark:bg-[#373737] dark:text-[#9B9B9B]">
-                                  {email.charAt(0).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              {email}
-                            </span>
-                            <button
-                              onClick={() => {
-                                setValue(
-                                  'bcc',
-                                  bccEmails.filter((_, i) => i !== index),
-                                );
-                                setHasUnsavedChanges(true);
-                              }}
-                              className="text-white/50 hover:text-white/90"
-                            >
-                              <X className="mt-0.5 h-3.5 w-3.5 fill-black dark:fill-[#9A9A9A]" />
-                            </button>
-                          </div>
-                        ))}
-                        {bccEmails.length > 3 && (
-                          <span className="ml-1 text-center text-[#8C8C8C]">
-                            +{bccEmails.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <RecipientAutosuggest
+                  control={form.control}
+                  name="bcc"
+                  placeholder="Enter email for Bcc"
+                  disabled={isLoading}
+                />
               </div>
             )}
           </div>
@@ -1242,6 +741,7 @@ export function EmailComposer({
             <button
               onClick={handleGenerateSubject}
               disabled={isLoading || isGeneratingSubject || messageLength < 1}
+              className="cursor-pointer rounded p-1 transition-colors hover:bg-gray-50 dark:hover:bg-[#404040]"
             >
               <div className="flex items-center justify-center gap-2.5 pl-0.5">
                 <div className="flex h-5 items-center justify-center gap-1 rounded-sm">
@@ -1288,6 +788,7 @@ export function EmailComposer({
 
         {/* Message Content */}
         <div className="flex-1 overflow-y-auto border-t bg-[#FFFFFF] px-3 py-3 outline-white/5 dark:bg-[#202020]">
+          <AgentThinkingAccordion steps={agentSteps} isThinking={agentIsThinking} />
           <div
             onClick={() => {
               editor.commands.focus();
@@ -1295,7 +796,10 @@ export function EmailComposer({
             className={cn(
               `min-h-[200px] w-full`,
               editorClassName,
-              aiGeneratedMessage !== null ? 'blur-sm' : '',
+              aiGeneratedMessage !== null ||
+                (generatedDrafts !== null && generatedDrafts.length > 1)
+                ? 'blur-sm'
+                : '',
             )}
           >
             <EditorContent editor={editor} className="h-full w-full max-w-full overflow-x-auto" />
@@ -1308,7 +812,11 @@ export function EmailComposer({
         <div className="flex flex-col items-start justify-start gap-2">
           {toggleToolbar && <Toolbar editor={editor} />}
           <div className="flex items-center justify-start gap-2">
-            <Button size={'xs'} onClick={handleSend} disabled={isLoading || settingsLoading}>
+            <Button
+              size={'xs'}
+              onClick={handleSend}
+              disabled={isLoading || settingsLoading || !isScheduleValid}
+            >
               <div className="flex items-center justify-center">
                 <div className="text-center text-sm leading-none text-white dark:text-black">
                   <span>Send </span>
@@ -1319,7 +827,17 @@ export function EmailComposer({
                 <CurvedArrow className="mt-1.5 h-4 w-4 fill-white dark:fill-black" />
               </div>
             </Button>
-            <Button variant={'secondary'} size={'xs'} onClick={() => fileInputRef.current?.click()}>
+            <ScheduleSendPicker
+              value={scheduleAt}
+              onChange={handleScheduleChange}
+              onValidityChange={handleScheduleValidityChange}
+            />
+            <Button
+              variant={'secondary'}
+              size={'xs'}
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-background cursor-pointer border transition-colors hover:bg-gray-50 dark:hover:bg-[#404040]"
+            >
               <Plus className="h-3 w-3 fill-[#9A9A9A]" />
               <span className="hidden px-0.5 text-sm md:block">Add</span>
             </Button>
@@ -1351,7 +869,7 @@ export function EmailComposer({
               <Popover modal={true}>
                 <PopoverTrigger asChild>
                   <button
-                    className="focus-visible:ring-ring flex items-center gap-1.5 rounded-md border border-[#E7E7E7] bg-white/5 px-2 py-1 text-sm hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:border-[#2B2B2B]"
+                    className="focus-visible:ring-ring flex cursor-pointer items-center gap-1.5 rounded-md border border-[#E7E7E7] bg-white/5 px-2 py-1 text-sm hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:border-[#2B2B2B]"
                     aria-label={`View ${attachments.length} attached ${pluralize('file', attachments.length)}`}
                   >
                     <Paperclip className="h-3.5 w-3.5 text-[#9A9A9A]" />
@@ -1441,6 +959,7 @@ export function EmailComposer({
                               onClick={async (e: React.MouseEvent<HTMLButtonElement>) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+
                                 try {
                                   await removeAttachment(index);
                                 } catch (error) {
@@ -1448,7 +967,7 @@ export function EmailComposer({
                                   toast.error('Failed to remove attachment');
                                 }
                               }}
-                              className="focus-visible:ring-ring ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-transparent hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2"
+                              className="focus-visible:ring-ring ml-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2"
                               aria-label={`Remove ${file.name}`}
                             >
                               <XIcon className="text-muted-foreground h-3.5 w-3.5 hover:text-black dark:text-[#9B9B9B] dark:hover:text-white" />
@@ -1470,7 +989,7 @@ export function EmailComposer({
                     variant="ghost"
                     size="icon"
                     onClick={() => setToggleToolbar(!toggleToolbar)}
-                    className={`h-auto w-auto rounded p-1.5 ${toggleToolbar ? 'bg-muted' : 'bg-background'} border`}
+                    className={`h-auto w-auto rounded p-1.5 ${toggleToolbar ? 'bg-muted' : 'bg-background'} cursor-pointer border transition-colors hover:bg-gray-50 dark:hover:bg-[#404040]`}
                   >
                     <Type className="h-4 w-4" />
                   </Button>
@@ -1483,7 +1002,50 @@ export function EmailComposer({
         <div className="flex items-start justify-start gap-2">
           <div className="relative">
             <AnimatePresence>
-              {aiGeneratedMessage !== null ? (
+              {generatedDrafts !== null && generatedDrafts.length > 1 ? (
+                <DraftSelector
+                  drafts={generatedDrafts}
+                  onSelect={(draft) => {
+                    editor.commands.setContent({
+                      type: 'doc',
+                      content: draft.body.split(/\r?\n/).map((line) => {
+                        return {
+                          type: 'paragraph',
+                          content: line.trim().length === 0 ? [] : [{ type: 'text', text: line }],
+                        };
+                      }),
+                    });
+                    // Track the AI draft for correction learning
+                    trackAiDraft(draft.body);
+
+                    // Track selection for learning
+                    const values = getValues();
+                    const rejectedApproaches = generatedDrafts
+                      .filter((d) => d.id !== draft.id)
+                      .map((d) => d.approach);
+
+                    trackSelection({
+                      selectedApproach: draft.approach,
+                      rejectedApproaches,
+                      recipientEmail: values.to[0] ?? '',
+                      subject: values.subject,
+                      threadDepth: 0,
+                    }).catch(() => {
+                      // Silently ignore errors - learning is non-critical
+                    });
+
+                    // Update subject if the draft includes one
+                    if (draft.subject) {
+                      setValue('subject', draft.subject);
+                    }
+                    setGeneratedDrafts(null);
+                  }}
+                  onReject={() => {
+                    setGeneratedDrafts(null);
+                    clearTracking();
+                  }}
+                />
+              ) : aiGeneratedMessage !== null ? (
                 <ContentPreview
                   content={aiGeneratedMessage}
                   onAccept={() => {
@@ -1496,10 +1058,13 @@ export function EmailComposer({
                         };
                       }),
                     });
+                    // Track the AI draft for correction learning
+                    trackAiDraft(aiGeneratedMessage);
                     setAiGeneratedMessage(null);
                   }}
                   onReject={() => {
                     setAiGeneratedMessage(null);
+                    clearTracking();
                   }}
                 />
               ) : null}
@@ -1507,12 +1072,13 @@ export function EmailComposer({
             <Button
               size={'xs'}
               variant={'ghost'}
-              className="border border-[#8B5CF6]"
+              className="cursor-pointer border border-[#8B5CF6]"
               onClick={async () => {
                 if (!subjectInput.trim()) {
                   await handleGenerateSubject();
                 }
                 setAiGeneratedMessage(null);
+                setGeneratedDrafts(null);
                 await handleAiGenerate();
               }}
               disabled={isLoading || aiIsLoading || messageLength < 1}
@@ -1531,37 +1097,6 @@ export function EmailComposer({
               </div>
             </Button>
           </div>
-          {/* <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  disabled
-                  className="hidden h-7 items-center gap-0.5 overflow-hidden rounded-md bg-white/5 px-1.5 shadow-sm hover:bg-white/10 disabled:opacity-50 md:flex"
-                >
-                  <Smile className="h-3 w-3 fill-[#9A9A9A]" />
-                  <span className="px-0.5 text-sm">Casual</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Coming soon...</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  disabled
-                  className="flex h-7 items-center gap-0.5 overflow-hidden rounded-md bg-white/5 px-1.5 shadow-sm hover:bg-white/10 disabled:opacity-50 md:flex"
-                >
-                  {messageLength < 50 && <ShortStack className="h-3 w-3 fill-[#9A9A9A]" />}
-                  {messageLength >= 50 && messageLength < 200 && (
-                    <MediumStack className="h-3 w-3 fill-[#9A9A9A]" />
-                  )}
-                  {messageLength >= 200 && <LongStack className="h-3 w-3 fill-[#9A9A9A]" />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Coming soon...</p>
-              </TooltipContent>
-            </Tooltip> */}
         </div>
       </div>
 
@@ -1575,10 +1110,10 @@ export function EmailComposer({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-2">
-            <Button variant="outline" onClick={cancelLeave}>
+            <Button variant="outline" onClick={cancelLeave} className="cursor-pointer">
               Stay
             </Button>
-            <Button variant="destructive" onClick={confirmLeave}>
+            <Button variant="destructive" onClick={confirmLeave} className="cursor-pointer">
               Leave
             </Button>
           </DialogFooter>
@@ -1600,6 +1135,7 @@ export function EmailComposer({
               onClick={() => {
                 setShowAttachmentWarning(false);
               }}
+              className="cursor-pointer"
             >
               Recheck
             </Button>
@@ -1608,6 +1144,7 @@ export function EmailComposer({
                 setShowAttachmentWarning(false);
                 void proceedWithSend();
               }}
+              className="cursor-pointer"
             >
               Send Anyway
             </Button>
@@ -1699,7 +1236,7 @@ const ContentPreview = ({
     </div>
     <div className="flex justify-end gap-2 p-2">
       <button
-        className="flex h-7 items-center gap-0.5 overflow-hidden rounded-md border bg-red-700 px-1.5 text-sm shadow-sm hover:bg-red-800 dark:border-none"
+        className="flex h-7 cursor-pointer items-center gap-0.5 overflow-hidden rounded-md border bg-red-700 px-1.5 text-sm shadow-sm transition-colors hover:bg-red-800 dark:border-none"
         onClick={async () => {
           if (onReject) {
             await onReject();
@@ -1712,7 +1249,7 @@ const ContentPreview = ({
         <span>Reject</span>
       </button>
       <button
-        className="flex h-7 items-center gap-0.5 overflow-hidden rounded-md border bg-green-700 px-1.5 text-sm shadow-sm hover:bg-green-800 dark:border-none"
+        className="flex h-7 cursor-pointer items-center gap-0.5 overflow-hidden rounded-md border bg-green-700 px-1.5 text-sm shadow-sm transition-colors hover:bg-green-800 dark:border-none"
         onClick={async () => {
           if (onAccept) {
             await onAccept(content);

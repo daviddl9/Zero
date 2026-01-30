@@ -3,15 +3,12 @@ import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useCommandPalette } from '../context/command-palette-context.jsx';
 import { LabelDialog } from '@/components/labels/label-dialog';
 import { useActiveConnection } from '@/hooks/use-connections';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import Intercom, { show } from '@intercom/messenger-js-sdk';
-import { MessageSquare, OldPhone } from '../icons/icons';
 import { useSidebar } from '../context/sidebar-context';
 import { useTRPC } from '@/providers/query-provider';
+import { useMutation } from '@tanstack/react-query';
 import { type NavItem } from '@/config/navigation';
 import type { Label as LabelType } from '@/types';
 import { Link, useLocation } from 'react-router';
-import { m } from '../../paraglide/messages.js';
 import { Button } from '@/components/ui/button';
 import { useLabels } from '@/hooks/use-labels';
 import { Badge } from '@/components/ui/badge';
@@ -19,7 +16,6 @@ import { useStats } from '@/hooks/use-stats';
 import SidebarLabels from './sidebar-labels';
 import { useCallback, useRef } from 'react';
 import { BASE_URL } from '@/lib/constants';
-import { useQueryState } from 'nuqs';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -55,19 +51,8 @@ export function NavMain({ items }: NavMainProps) {
   const location = useLocation();
   const pathname = location.pathname;
   const searchParams = new URLSearchParams();
-  const [category] = useQueryState('category');
 
   const trpc = useTRPC();
-  const { data: intercomToken } = useQuery(trpc.user.getIntercomToken.queryOptions());
-
-  React.useEffect(() => {
-    if (intercomToken) {
-      Intercom({
-        app_id: 'aavenrba',
-        intercom_user_jwt: intercomToken,
-      });
-    }
-  }, [intercomToken]);
 
   const { mutateAsync: createLabel } = useMutation(trpc.labels.create.mutationOptions());
 
@@ -108,9 +93,7 @@ export function NavMain({ items }: NavMainProps) {
       // Handle settings navigation
       if (item.isSettingsButton) {
         // Include current path with category query parameter if present
-        const currentPath = category
-          ? `${pathname}?category=${encodeURIComponent(category)}`
-          : pathname;
+        const currentPath = pathname;
         return `${item.url}?from=${encodeURIComponent(currentPath)}`;
       }
 
@@ -137,14 +120,9 @@ export function NavMain({ items }: NavMainProps) {
         return `${item.url}?from=/mail`;
       }
 
-      // Handle category links
-      if (item.id === 'inbox' && category) {
-        return `${item.url}?category=${encodeURIComponent(category)}`;
-      }
-
       return item.url;
     },
-    [pathname, category, searchParams, isValidInternalUrl],
+    [pathname, searchParams, isValidInternalUrl],
   );
 
   const { data: activeAccount } = useActiveConnection();
@@ -172,38 +150,27 @@ export function NavMain({ items }: NavMainProps) {
   );
 
   const onSubmit = async (data: LabelType) => {
-    toast.promise(createLabel(data), {
-      loading: 'Creating label...',
-      success: 'Label created successfully',
-      error: 'Failed to create label',
-      finally: () => {refetch()},
-    });
+    try {
+      const promise = createLabel(data).then(async (result) => {
+        await refetch();
+        return result;
+      });
+
+      toast.promise(promise, {
+        loading: 'Creating label...',
+        success: 'Label created successfully',
+        error: 'Failed to create label',
+      });
+
+      await promise;
+    } catch (error) {
+      console.error('Failed to create label:', error);
+    }
   };
 
   return (
     <SidebarGroup className={`${state !== 'collapsed' ? '' : 'mt-1'} space-y-2.5 py-0 md:px-0`}>
       <SidebarMenu>
-        {isBottomNav ? (
-          <>
-            <SidebarMenuButton
-              onClick={() => show()}
-              tooltip={state === 'collapsed' ? m['common.commandPalette.groups.help']() : undefined}
-              className="hover:bg-subtleWhite flex cursor-pointer items-center dark:hover:bg-[#202020]"
-            >
-              <OldPhone className="relative mr-2.5 h-2 w-2 fill-[#8F8F8F]" />
-              <p className="relative bottom-0.5 mt-0.5 truncate text-[13px]">Live Support</p>
-            </SidebarMenuButton>
-            <NavItem
-              key={'feedback'}
-              isActive={isUrlActive('https://feedback.0.email')}
-              href={'https://feedback.0.email'}
-              url={'https://feedback.0.email'}
-              icon={MessageSquare}
-              target={'_blank'}
-              title={m['navigation.sidebar.feedback']()}
-            />
-          </>
-        ) : null}
         {items.map((section) => (
           <Collapsible
             key={section.title}

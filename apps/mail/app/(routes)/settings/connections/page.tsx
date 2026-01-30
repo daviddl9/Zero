@@ -18,12 +18,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useMutation } from '@tanstack/react-query';
 import { Trash, Plus, Unplug } from 'lucide-react';
 import { useThreads } from '@/hooks/use-threads';
-import { useBilling } from '@/hooks/use-billing';
 import { emailProviders } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { m } from '@/paraglide/messages';
-import { useQueryState } from 'nuqs';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -35,8 +33,6 @@ export default function ConnectionsPage() {
   const trpc = useTRPC();
   const { mutateAsync: deleteConnection } = useMutation(trpc.connections.delete.mutationOptions());
   const [{ refetch: refetchThreads }] = useThreads();
-  const { isPro } = useBilling();
-  const [, setPricingDialog] = useQueryState('pricingDialog');
   const disconnectAccount = async (connectionId: string) => {
     await deleteConnection(
       { connectionId },
@@ -164,7 +160,7 @@ export default function ConnectionsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="text-muted-foreground hover:text-primary ml-4 shrink-0" 
+                            className="text-muted-foreground hover:text-primary ml-4 shrink-0"
                             disabled={data.connections.length === 1}
                           >
                             <Trash className="h-4 w-4" />
@@ -201,30 +197,17 @@ export default function ConnectionsPage() {
           ) : null}
 
           <div className="flex items-center justify-start">
-            {isPro ? (
-              <AddConnectionDialog>
-                <Button
-                  variant="outline"
-                  className="group relative w-9 overflow-hidden transition-all duration-200 hover:w-full sm:hover:w-[32.5%]"
-                >
-                  <Plus className="absolute left-2 h-4 w-4" />
-                  <span className="whitespace-nowrap pl-7 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    {m['pages.settings.connections.addEmail']()}
-                  </span>
-                </Button>
-              </AddConnectionDialog>
-            ) : (
+            <AddConnectionDialog>
               <Button
-                onClick={() => setPricingDialog('true')}
                 variant="outline"
-                className="group relative w-9 overflow-hidden transition-all duration-200 hover:w-full sm:hover:w-[32.5%]"
+                className="group relative w-9 overflow-hidden duration-200 hover:w-full sm:hover:w-[32.5%]"
               >
                 <Plus className="absolute left-2 h-4 w-4" />
                 <span className="whitespace-nowrap pl-7 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   {m['pages.settings.connections.addEmail']()}
                 </span>
               </Button>
-            )}
+            </AddConnectionDialog>
           </div>
         </div>
       </SettingsCard>

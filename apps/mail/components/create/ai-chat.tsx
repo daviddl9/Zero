@@ -1,3 +1,5 @@
+import { ToolCallVisualization, type ToolCallData } from './tool-call-visualization';
+import { ThinkingVisualization, type ThoughtData } from './thinking-visualization';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { useAIFullScreen, useAISidebar } from '../ui/ai-sidebar';
 import { VoiceProvider } from '@/providers/voice-provider';
@@ -5,7 +7,6 @@ import useComposeEditor from '@/hooks/use-compose-editor';
 import { useRef, useCallback, useEffect } from 'react';
 import type { useAgentChat } from 'agents/ai-react';
 import { Markdown } from '@react-email/components';
-import { useBilling } from '@/hooks/use-billing';
 import { TextShimmer } from '../ui/text-shimmer';
 import { useThread } from '@/hooks/use-threads';
 import { MailLabels } from '../mail/mail-list';
@@ -15,7 +16,6 @@ import { VoiceButton } from '../voice-button';
 import { EditorContent } from '@tiptap/react';
 import { CurvedArrow } from '../icons/icons';
 import { Tools } from '../../types/tools';
-import { Button } from '../ui/button';
 import { format } from 'date-fns-tz';
 import { useQueryState } from 'nuqs';
 
@@ -72,12 +72,12 @@ const ThreadPreview = ({ threadId }: { threadId: string }) => {
 
 const ExampleQueries = ({ onQueryClick }: { onQueryClick: (query: string) => void }) => {
   const firstRowQueries = [
-    'Find invoice from Stripe',
-    'Show unpaid invoices',
-    'Show recent work feedback',
+    'Find all work meetings today',
+    'Label all emails from Github as OSS',
+    'Show recent Linear feedback',
   ];
 
-  const secondRowQueries = ['Find all work meetings', 'What projects do i have coming up'];
+  const secondRowQueries = ['Find receipt from OpenAI', 'What Asana projects do I have coming up'];
 
   return (
     <div className="relative mt-6 flex w-full max-w-xl flex-col items-center gap-2">
@@ -144,6 +144,7 @@ export interface AIChatProps {
   className?: string;
   onModelChange?: (model: string) => void;
   setMessages: (messages: AiMessage[]) => void;
+  showDevTools?: boolean;
 }
 
 // Subcomponents for ToolResponse
@@ -197,16 +198,14 @@ const ToolResponse = ({ toolName, result, args }: { toolName: string; result: an
 
 export function AIChat({
   messages,
-  setInput,
+  sendMessage,
   error,
-  handleSubmit,
   status,
-}: ReturnType<typeof useAgentChat>): React.ReactElement {
+  showDevTools: _showDevTools,
+}: ReturnType<typeof useAgentChat> & { showDevTools?: boolean }): React.ReactElement {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const { chatMessages } = useBilling();
   const { isFullScreen } = useAIFullScreen();
-  const [, setPricingDialog] = useQueryState('pricingDialog');
   const [aiSidebarOpen] = useQueryState('aiSidebar');
   const { toggleOpen } = useAISidebar();
 
@@ -224,7 +223,7 @@ export function AIChat({
 
   const editor = useComposeEditor({
     placeholder: 'Ask Zero to do anything...',
-    onLengthChange: () => setInput(editor.getText()),
+    onLengthChange: () => {},
     onKeydown(event) {
       if (event.key === '0' && event.metaKey) {
         return toggleOpen();
@@ -238,8 +237,11 @@ export function AIChat({
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    handleSubmit(e);
+    const text = editor.getText().trim();
+    if (!text) return;
+
     editor.commands.clearContent(true);
+    await sendMessage({ text });
     setTimeout(() => {
       scrollToBottom();
     }, 100);
@@ -247,7 +249,6 @@ export function AIChat({
 
   const handleQueryClick = (query: string) => {
     editor.commands.setContent(query);
-    setInput(query);
     editor.commands.focus();
   };
 
@@ -261,17 +262,7 @@ export function AIChat({
     <div className={cn('flex h-full flex-col', isFullScreen ? 'mx-auto max-w-xl' : '')}>
       <div className="no-scrollbar flex-1 overflow-y-auto" ref={messagesContainerRef}>
         <div className="min-h-full px-2 py-4">
-          {chatMessages && !chatMessages.enabled ? (
-            <div
-              onClick={() => setPricingDialog('true')}
-              className="absolute inset-0 flex flex-col items-center justify-center"
-            >
-              <TextShimmer className="text-center text-xl font-medium">
-                Upgrade to Zero Pro for unlimited AI chat
-              </TextShimmer>
-              <Button className="mt-2 h-8 w-52">Start 7 day free trial</Button>
-            </div>
-          ) : !messages.length ? (
+          {!messages.length ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <div className="relative mb-4 h-[44px] w-[44px]">
                 <img src="/black-icon.svg" alt="Zero Logo" className="dark:hidden" />
@@ -289,21 +280,142 @@ export function AIChat({
             </div>
           ) : (
             messages.map((message, index) => {
-              const textParts = message.parts.filter((part) => part.type === 'text');
-              const toolParts = message.parts.filter((part) => part.type === 'tool-invocation');
+              // Handle both parts-based and direct toolCalls structure
+              const parts = (message as any).parts || [];
+              const textParts = parts.filter((part: any) => part.type === 'text');
+              // Tool calls have type "tool-{toolName}" (e.g., "tool-inboxRag") not "tool-invocation"
+              const toolParts = parts.filter((part: any) => 
+                typeof part.type === 'string' && part.type.startsWith('tool-')
+              );
+
+              // Extract tool name from part type (format: "tool-{toolName}")
+              // Tool call data is directly on the part, not nested in toolInvocation
+              const sequentialThinkingParts = toolParts.filter(
+                (part: any) => part.type === `tool-${Tools.SequentialThinking}` || part.type === `tool-sequentialthinking`,
+              );
+              const thinkToolParts = toolParts.filter(
+                (part: any) => part.type === `tool-${Tools.Think}` || part.type === 'tool-think',
+              );
+              const otherToolParts = toolParts.filter(
+                (part: any) =>
+                  part.type !== `tool-${Tools.SequentialThinking}` &&
+                  part.type !== `tool-sequentialthinking` &&
+                  part.type !== `tool-${Tools.Think}` &&
+                  part.type !== 'tool-think',
+              );
+
+              // Parse sequential thinking data from tool results
+              // Tool data is directly on the part: part.output contains the result
+              const sequentialThoughts: ThoughtData[] = sequentialThinkingParts
+                .filter((part: any) => part.output || part.result)
+                .map((part: any) => {
+                  try {
+                    const result = part.output || part.result;
+                    if (typeof result === 'string') {
+                      return JSON.parse(result);
+                    }
+                    return result;
+                  } catch {
+                    return null;
+                  }
+                })
+                .filter((t): t is ThoughtData => t !== null && typeof t.thought === 'string');
+
+              // Parse simple think tool data - show all, including pending
+              // Tool data is directly on the part: part.type = "tool-think", part.input (args), part.output (result)
+              const thinkToolCalls = thinkToolParts.map((part: any) => {
+                const toolName = part.type?.replace('tool-', '') || 'unknown';
+                const args = part.input || part.args || {};
+                const result = part.output || part.result;
+                return {
+                  toolName,
+                  args: args as Record<string, unknown>,
+                  result: result,
+                  state: part.state === 'result' || part.state === 'output-available'
+                    ? 'result' 
+                    : part.state === 'error'
+                    ? 'error'
+                    : part.state === 'streaming' || part.state === 'input-streaming'
+                    ? 'streaming'
+                    : result !== undefined
+                    ? 'result'
+                    : 'pending',
+                };
+              });
+
+              // Parse tool call data for visualization - show all, including pending
+              // Tool data is directly on the part: part.type = "tool-{name}", part.input (args), part.output (result)
+              const toolCallsData: ToolCallData[] = otherToolParts.map((part: any) => {
+                const toolName = part.type?.replace('tool-', '') || 'unknown';
+                
+                // Check for args in multiple possible locations (input is the correct one)
+                const args = part.input || part.args || {};
+                // Results are in part.output, not part.result
+                const result = part.output || part.result;
+                
+                return {
+                  toolName,
+                  args: args as Record<string, unknown>,
+                  result: result,
+                  state: part.state === 'result' || part.state === 'output-available'
+                    ? 'result' 
+                    : part.state === 'error'
+                    ? 'error'
+                    : part.state === 'streaming' || part.state === 'input-streaming'
+                    ? 'streaming'
+                    : result !== undefined
+                    ? 'result'
+                    : 'pending',
+                };
+              });
 
               return (
-                <div key={`${message.id}-${index}`} className="mb-2 flex flex-col">
-                  {toolParts.map(
-                    (part, index) =>
-                      part.toolInvocation?.result && (
+                <div
+                  key={`${message.id}-${index}`}
+                  className="mb-2 flex flex-col"
+                  data-message-role={message.role}
+                >
+                  {/* Show sequential thinking visualization */}
+                  {sequentialThoughts.length > 0 && (
+                    <div className="mb-2">
+                      <ThinkingVisualization
+                        thoughts={sequentialThoughts}
+                        isStreaming={status === 'streaming'}
+                      />
+                    </div>
+                  )}
+
+                  {/* Show simple think tool visualization */}
+                  {thinkToolCalls.length > 0 && (
+                    <div className="mb-2">
+                      <ThinkingVisualization
+                        thinkToolCalls={thinkToolCalls}
+                        isStreaming={status === 'streaming'}
+                      />
+                    </div>
+                  )}
+
+                  {/* Show tool calls visualization - always show if there are any tool calls */}
+                  {toolCallsData.length > 0 && (
+                    <div className="mb-2">
+                      <ToolCallVisualization toolCalls={toolCallsData} />
+                    </div>
+                  )}
+
+                  {/* Regular tool responses (non-dev mode or specific visualizations) */}
+                  {otherToolParts.map(
+                    (part: any, idx) => {
+                      const toolName = part.type?.replace('tool-', '') || 'unknown';
+                      const result = part.output || part.result;
+                      return result && (
                         <ToolResponse
-                          key={`${part.toolInvocation.toolName}-${index}`}
-                          toolName={part.toolInvocation.toolName}
-                          result={part.toolInvocation.result}
-                          args={part.toolInvocation.args}
+                          key={`${toolName}-${idx}`}
+                          toolName={toolName}
+                          result={result}
+                          args={part.input || part.args}
                         />
-                      ),
+                      );
+                    },
                   )}
                   {textParts.length > 0 && (
                     <div
@@ -394,7 +506,6 @@ export function AIChat({
                   form="ai-chat-form"
                   type="submit"
                   className="inline-flex cursor-pointer gap-1.5 rounded-lg"
-                  disabled={!chatMessages.enabled}
                 >
                   <div className="dark:bg[#141414] flex h-7 items-center justify-center gap-1 rounded-sm bg-[#262626] px-2 pr-1">
                     <CurvedArrow className="mt-1.5 h-4 w-4 fill-white dark:fill-[#929292]" />

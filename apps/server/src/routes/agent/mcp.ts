@@ -15,9 +15,9 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { getThread, getZeroAgent } from '../../lib/server-utils';
 import { composeEmail } from '../../trpc/routes/ai/compose';
 import { getCurrentDateContext } from '../../lib/prompts';
-import { getZeroAgent } from '../../lib/server-utils';
 import { connection } from '../../db/schema';
 import { FOLDERS } from '../../lib/utils';
 import { env } from 'cloudflare:workers';
@@ -84,41 +84,13 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
             ],
           };
         }
-        const response = await env.VECTORIZE.getByIds([s.id]);
-        const driver = await getZeroAgent(this.activeConnectionId);
-        const thread = await driver.getThread(s.id);
-        if (response.length && response?.[0]?.metadata?.['summary'] && thread?.latest?.subject) {
-          const result = response[0].metadata as { summary: string; connection: string };
-          if (result.connection !== this.activeConnectionId) {
-            return {
-              content: [
-                {
-                  type: 'text' as const,
-                  text: 'No summary found for this connection',
-                },
-              ],
-            };
-          }
-          const shortResponse = await env.AI.run('@cf/facebook/bart-large-cnn', {
-            input_text: result.summary,
-          });
+        const { result: thread } = await getThread(this.activeConnectionId, s.id);
+        if (!thread?.latest) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: shortResponse.summary as string,
-              },
-              {
-                type: 'text' as const,
-                text: `Subject: ${thread.latest?.subject}`,
-              },
-              {
-                type: 'text' as const,
-                text: `Sender: ${thread.latest?.sender.name} <${thread.latest?.sender.email}>`,
-              },
-              {
-                type: 'text' as const,
-                text: `Date: ${thread.latest?.receivedOn}`,
+                text: 'Thread not found',
               },
             ],
           };
@@ -127,7 +99,15 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
           content: [
             {
               type: 'text' as const,
-              text: 'No summary found',
+              text: `Subject: ${thread.latest.subject}`,
+            },
+            {
+              type: 'text' as const,
+              text: `Sender: ${thread.latest.sender.name} <${thread.latest.sender.email}>`,
+            },
+            {
+              type: 'text' as const,
+              text: `Date: ${thread.latest.receivedOn}`,
             },
           ],
         };
@@ -187,7 +167,7 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
       },
     );
 
-    const agent = await getZeroAgent(_connection.id);
+    const { stub: agent } = await getZeroAgent(_connection.id);
 
     this.server.registerTool(
       'composeEmail',
@@ -328,7 +308,7 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
         });
         const content = await Promise.all(
           result.threads.map(async (thread) => {
-            const loadedThread = await agent.getThread(thread.id);
+            const { result: loadedThread } = await getThread(this.activeConnectionId!, thread.id);
             return [
               {
                 type: 'text' as const,
@@ -363,7 +343,7 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
         },
       },
       async (s) => {
-        const thread = await agent.getThread(s.threadId);
+        const { result: thread } = await getThread(this.activeConnectionId!, s.threadId);
         const initialResponse = [
           {
             type: 'text' as const,
@@ -401,7 +381,9 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
         },
       },
       async (s) => {
-        await agent.modifyLabels(s.threadIds, [], ['UNREAD']);
+        await Promise.all(
+          s.threadIds.map((threadId) => agent.modifyThreadLabelsInDB(threadId, [], ['UNREAD'])),
+        );
         return {
           content: [
             {
@@ -422,7 +404,9 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
         },
       },
       async (s) => {
-        await agent.modifyLabels(s.threadIds, ['UNREAD'], []);
+        await Promise.all(
+          s.threadIds.map((threadId) => agent.modifyThreadLabelsInDB(threadId, ['UNREAD'], [])),
+        );
         return {
           content: [
             {
@@ -445,7 +429,11 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
         },
       },
       async (s) => {
-        await agent.modifyLabels(s.threadIds, s.addLabelIds, s.removeLabelIds);
+        await Promise.all(
+          s.threadIds.map((threadId) =>
+            agent.modifyThreadLabelsInDB(threadId, s.addLabelIds, s.removeLabelIds),
+          ),
+        );
         return {
           content: [
             {
@@ -561,72 +549,6 @@ export class ZeroMCP extends McpAgent<typeof env, Record<string, unknown>, { use
         }
       },
     );
-
-    // this.server.registerTool(
-    //   'bulkDelete',
-    //   {
-    //     description: 'Move multiple threads to trash',
-    //     inputSchema: {
-    //       threadIds: z.array(z.string()),
-    //     },
-    //   },
-    //   async (s) => {
-    //     try {
-    //       await agent.modifyLabels(s.threadIds, ['TRASH'], ['INBOX']);
-    //       return {
-    //         content: [
-    //           {
-    //             type: 'text',
-    //             text: 'Threads moved to trash',
-    //           },
-    //         ],
-    //       };
-    //     } catch (e) {
-    //       console.error(e);
-    //       return {
-    //         content: [
-    //           {
-    //             type: 'text',
-    //             text: 'Failed to move threads to trash',
-    //           },
-    //         ],
-    //       };
-    //     }
-    //   },
-    // );
-
-    // this.server.registerTool(
-    //   'bulkArchive',
-    //   {
-    //     description: 'Archive multiple email threads',
-    //     inputSchema: {
-    //       threadIds: z.array(z.string()),
-    //     },
-    //   },
-    //   async (s) => {
-    //     try {
-    //       await agent.modifyLabels(s.threadIds, [], ['INBOX']);
-    //       return {
-    //         content: [
-    //           {
-    //             type: 'text',
-    //             text: 'Threads archived',
-    //           },
-    //         ],
-    //       };
-    //     } catch (e) {
-    //       console.error(e);
-    //       return {
-    //         content: [
-    //           {
-    //             type: 'text',
-    //             text: 'Failed to archive threads',
-    //           },
-    //         ],
-    //       };
-    //     }
-    //   },
-    // );
     this.ctx.waitUntil(conn.end());
   }
 }

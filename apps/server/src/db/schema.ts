@@ -8,7 +8,27 @@ import {
   primaryKey,
   unique,
   index,
+  real,
+  customType,
 } from 'drizzle-orm/pg-core';
+
+// Custom type for pgvector
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType(config) {
+    const dimensions = (config as { dimensions?: number })?.dimensions ?? 1536;
+    return `vector(${dimensions})`;
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(',')}]`;
+  },
+  fromDriver(value: string): number[] {
+    // Parse "[0.1,0.2,0.3]" format
+    return value
+      .slice(1, -1)
+      .split(',')
+      .map((v) => parseFloat(v));
+  },
+});
 import { defaultUserSettings } from '../lib/schemas';
 
 export const createTable = pgTableCreator((name) => `mail0_${name}`);
@@ -194,7 +214,13 @@ export const userSettings = createTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' })
       .unique(),
-    settings: jsonb('settings').notNull().default(defaultUserSettings),
+    settings: jsonb('settings')
+      .$type<typeof defaultUserSettings>()
+      .notNull()
+      .default(defaultUserSettings),
+    // Encrypted API keys stored separately from settings JSONB for security
+    encryptedOpenaiKey: text('encrypted_openai_key'),
+    encryptedGeminiKey: text('encrypted_gemini_key'),
     createdAt: timestamp('created_at').notNull(),
     updatedAt: timestamp('updated_at').notNull(),
   },
@@ -319,3 +345,206 @@ export const emailTemplate = createTable(
     unique('mail0_email_template_user_id_name_unique').on(t.userId, t.name),
   ],
 );
+
+// AI Copilot Skills - stores skill definitions for AI agent
+export const skill = createTable(
+  'skill',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    connectionId: text('connection_id').references(() => connection.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    content: text('content').notNull(),
+    category: text('category'),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('skill_user_id_idx').on(t.userId),
+    index('skill_connection_id_idx').on(t.connectionId),
+    index('skill_category_idx').on(t.category),
+    unique('skill_user_id_name_unique').on(t.userId, t.name),
+  ],
+);
+
+// AI Copilot Skill References - stores reference documents attached to skills
+export const skillReference = createTable(
+  'skill_reference',
+  {
+    id: text('id').primaryKey(),
+    skillId: text('skill_id')
+      .notNull()
+      .references(() => skill.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    content: text('content').notNull(),
+    order: integer('order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('skill_reference_skill_id_idx').on(t.skillId),
+    unique('skill_reference_skill_id_name_unique').on(t.skillId, t.name),
+  ],
+);
+
+// AI Agent Configuration - stores agent persona and guidelines
+export const agentConfig = createTable(
+  'agent_config',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' })
+      .unique(),
+    jobDescription: text('job_description'),
+    writingStyle: text('writing_style'),
+    guidelines: text('guidelines'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_config_user_id_idx').on(t.userId)],
+);
+
+// Email Workflows - stores workflow automation definitions
+import type {
+  WorkflowNode,
+  WorkflowConnections,
+  WorkflowSettings,
+  ExecutionStatus,
+  TriggerData,
+  NodeExecutionResult,
+} from '../lib/workflow-engine/types';
+
+export const workflow = createTable(
+  'workflow',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    connectionId: text('connection_id').references(() => connection.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    // n8n-style: nodes + connections as JSON
+    nodes: jsonb('nodes').$type<WorkflowNode[]>().notNull().default([]),
+    connections: jsonb('connections').$type<WorkflowConnections>().notNull().default({}),
+    settings: jsonb('settings').$type<WorkflowSettings>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('workflow_user_id_idx').on(t.userId),
+    index('workflow_connection_id_idx').on(t.connectionId),
+    index('workflow_is_enabled_idx').on(t.isEnabled),
+    unique('workflow_user_id_name_unique').on(t.userId, t.name),
+  ],
+);
+
+// Workflow Execution - stores execution history and results
+export const workflowExecution = createTable(
+  'workflow_execution',
+  {
+    id: text('id').primaryKey(),
+    workflowId: text('workflow_id')
+      .notNull()
+      .references(() => workflow.id, { onDelete: 'cascade' }),
+    threadId: text('thread_id'),
+    status: text('status').$type<ExecutionStatus>().notNull(),
+    triggerData: jsonb('trigger_data').$type<TriggerData>(),
+    nodeResults: jsonb('node_results').$type<NodeExecutionResult[]>(),
+    error: text('error'),
+    startedAt: timestamp('started_at').notNull().defaultNow(),
+    completedAt: timestamp('completed_at'),
+  },
+  (t) => [
+    index('workflow_execution_workflow_id_idx').on(t.workflowId),
+    index('workflow_execution_status_idx').on(t.status),
+    index('workflow_execution_thread_id_idx').on(t.threadId),
+    index('workflow_execution_started_at_idx').on(t.startedAt),
+  ],
+);
+
+// Memory metadata types for AI draft learning
+export type MemoryCategory = 'preference' | 'correction' | 'selection';
+
+export interface MemoryMetadata {
+  // Source information
+  source: 'explicit' | 'correction' | 'selection';
+  // For corrections
+  correctionType?: 'minor_tweak' | 'major_rewrite' | 'replacement';
+  changePercentage?: number;
+  // For selections
+  selectedApproach?: string;
+  rejectedApproaches?: string[];
+  // Context
+  subjectKeywords?: string[];
+  threadDepth?: number;
+  // Learning signals
+  reinforcementCount?: number;
+  lastReinforcedAt?: string;
+}
+
+// Memory analytics interface
+export interface MemoryAnalytics {
+  totalMemories: number;
+  memoriesByCategory: {
+    preference: number;
+    correction: number;
+    selection: number;
+  };
+  memoriesByScope: {
+    general: number;
+    domainSpecific: number;
+    personSpecific: number;
+  };
+  recentLearnings: Array<{
+    id: string;
+    content: string;
+    category: MemoryCategory;
+    createdAt: Date;
+  }>;
+  topDomains: Array<{ domain: string; count: number }>;
+}
+
+// AI Draft Learning Memory - stores user preferences and learning data
+export const memory = createTable(
+  'memory',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    connectionId: text('connection_id').references(() => connection.id, { onDelete: 'cascade' }),
+    // Memory content
+    content: text('content').notNull(),
+    embedding: vector({ dimensions: 1536 }),
+    // Categorization
+    category: text('category').$type<MemoryCategory>().notNull(),
+    recipientEmail: text('recipient_email'),
+    recipientDomain: text('recipient_domain'),
+    // Priority weighting
+    weight: real('weight').default(1.0),
+    // Metadata
+    metadata: jsonb('metadata').$type<MemoryMetadata>(),
+    // Timestamps
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('memory_user_id_idx').on(t.userId),
+    index('memory_connection_id_idx').on(t.connectionId),
+    index('memory_recipient_domain_idx').on(t.recipientDomain),
+    index('memory_category_idx').on(t.category),
+    index('memory_created_at_idx').on(t.createdAt),
+    // Note: HNSW index for embedding should be created via raw SQL migration
+    // as Drizzle doesn't support HNSW index syntax directly
+  ],
+);
+
+export type Memory = typeof memory.$inferSelect;
+export type NewMemory = typeof memory.$inferInsert;

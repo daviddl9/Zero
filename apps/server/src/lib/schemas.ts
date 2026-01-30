@@ -37,7 +37,12 @@ export const createDraftData = z.object({
 export type CreateDraftData = z.infer<typeof createDraftData>;
 
 export const mailCategorySchema = z.object({
-  id: z.enum(['Important', 'All Mail', 'Personal', 'Promotions', 'Updates', 'Unread']),
+  id: z
+    .string()
+    .regex(
+      /^[a-zA-Z0-9\-_ ]+$/,
+      'Category ID must contain only alphanumeric characters, hyphens, underscores, and spaces',
+    ),
   name: z.string(),
   searchValue: z.string(),
   order: z.number().int(),
@@ -51,7 +56,7 @@ export const defaultMailCategories: MailCategory[] = [
   {
     id: 'Important',
     name: 'Important',
-    searchValue: 'is:important NOT is:sent NOT is:draft',
+    searchValue: 'IMPORTANT',
     order: 0,
     icon: 'Lightning',
     isDefault: false,
@@ -59,39 +64,15 @@ export const defaultMailCategories: MailCategory[] = [
   {
     id: 'All Mail',
     name: 'All Mail',
-    searchValue: 'NOT is:draft (is:inbox OR (is:sent AND to:me))',
+    searchValue: '',
     order: 1,
     icon: 'Mail',
     isDefault: true,
   },
   {
-    id: 'Personal',
-    name: 'Personal',
-    searchValue: 'is:personal NOT is:sent NOT is:draft',
-    order: 2,
-    icon: 'User',
-    isDefault: false,
-  },
-  {
-    id: 'Promotions',
-    name: 'Promotions',
-    searchValue: 'is:promotions NOT is:sent NOT is:draft',
-    order: 3,
-    icon: 'Tag',
-    isDefault: false,
-  },
-  {
-    id: 'Updates',
-    name: 'Updates',
-    searchValue: 'is:updates NOT is:sent NOT is:draft',
-    order: 4,
-    icon: 'Bell',
-    isDefault: false,
-  },
-  {
     id: 'Unread',
     name: 'Unread',
-    searchValue: 'is:unread NOT is:sent NOT is:draft',
+    searchValue: 'UNREAD',
     order: 5,
     icon: 'ScanEye',
     isDefault: false,
@@ -116,6 +97,10 @@ const categoriesSchema = z.array(mailCategorySchema).superRefine((cats, ctx) => 
   }
 });
 
+// AI Provider enum
+export const aiProviderSchema = z.enum(['openai', 'gemini']);
+export type AIProvider = z.infer<typeof aiProviderSchema>;
+
 export const userSettingsSchema = z.object({
   language: z.string(),
   timezone: z.string(),
@@ -128,9 +113,16 @@ export const userSettingsSchema = z.object({
   zeroSignature: z.boolean().default(true),
   categories: categoriesSchema.optional(),
   defaultEmailAlias: z.string().optional(),
+  undoSendEnabled: z.boolean().default(false),
   imageCompression: z.enum(['low', 'medium', 'original']).default('medium'),
   autoRead: z.boolean().default(true),
   animations: z.boolean().default(false),
+  // AI Model settings
+  aiProvider: aiProviderSchema.nullable().default(null),
+  hasOpenaiKey: z.boolean().default(false),
+  hasGeminiKey: z.boolean().default(false),
+  defaultModel: z.string().nullable().default(null),
+  summarizationModel: z.string().nullable().default(null),
 });
 
 export type UserSettings = z.infer<typeof userSettingsSchema>;
@@ -148,6 +140,13 @@ export const defaultUserSettings: UserSettings = {
   autoRead: true,
   defaultEmailAlias: '',
   categories: defaultMailCategories,
+  undoSendEnabled: false,
   imageCompression: 'medium',
   animations: false,
+  // AI Model settings defaults
+  aiProvider: null,
+  hasOpenaiKey: false,
+  hasGeminiKey: false,
+  defaultModel: null,
+  summarizationModel: null,
 };

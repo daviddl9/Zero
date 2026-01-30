@@ -26,7 +26,10 @@ import * as Sentry from '@sentry/react';
 import superjson from 'superjson';
 import './globals.css';
 
-const getUrl = () => import.meta.env.VITE_PUBLIC_BACKEND_URL + '/api/trpc';
+const getUrl = () => {
+  const base = typeof window !== 'undefined' ? window.location.origin : (import.meta.env.VITE_PUBLIC_BACKEND_URL || '');
+  return (base.endsWith('/api') ? base : `${base}/api`) + '/trpc';
+};
 
 export const getServerTrpc = (req: Request) =>
   createTRPCClient<AppRouter>({

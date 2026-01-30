@@ -1,0 +1,35 @@
+# Zero Email - Tailscale HTTPS Deployment Override
+#
+# This override configures Zero for HTTPS access via Tailscale.
+# Tailscale provides automatic HTTPS certificates for *.ts.net domains.
+#
+# Usage:
+#   # Without Pi overrides (standalone):
+#   docker compose -f docker-compose.standalone.yaml -f docker-compose.tailscale.yaml up -d
+#
+#   # With Pi overrides (shared MinIO):
+#   docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up -d
+#
+# Prerequisites:
+#   1. Install Tailscale on the host: curl -fsSL https://tailscale.com/install.sh | sh
+#   2. Start Tailscale: sudo tailscale up
+#   3. Enable HTTPS in Tailscale admin: https://login.tailscale.com/admin/dns
+#   4. Generate certs: sudo tailscale cert <your-hostname>.ts.net
+#   5. Copy certs to ./certs/ directory (or adjust volume mount below)
+#   6. Update .env with your Tailscale hostname (see .env.tailscale.example)
+#   7. Add redirect URI in Google Cloud Console
+#
+# Environment variables required in .env:
+#   TAILSCALE_HOSTNAME - Your Tailscale hostname (e.g., pi.tail-abc123.ts.net)
+
+services:
+  # ========================================
+  # Nginx - HTTPS with Tailscale certificates
+  # ========================================
+  nginx:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.tailscale.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro

@@ -127,9 +127,14 @@ export class SequentialThinkingProcessor {
             type: 'text' as const,
             text: JSON.stringify(
               {
+                thought: validatedInput.thought,
                 thoughtNumber: validatedInput.thoughtNumber,
                 totalThoughts: validatedInput.totalThoughts,
                 nextThoughtNeeded: validatedInput.nextThoughtNeeded,
+                isRevision: validatedInput.isRevision,
+                revisesThought: validatedInput.revisesThought,
+                branchFromThought: validatedInput.branchFromThought,
+                branchId: validatedInput.branchId,
                 branches: Object.keys(this.branches),
                 thoughtHistoryLength: this.thoughtHistory.length,
               },

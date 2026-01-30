@@ -16,7 +16,6 @@ import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
 import { useMemo } from 'react';
-import { toast } from 'sonner';
 
 export const AddConnectionDialog = ({
   children,
@@ -27,28 +26,13 @@ export const AddConnectionDialog = ({
   className?: string;
   onOpenChange?: (open: boolean) => void;
 }) => {
-  const { connections, attach } = useBilling();
+  const { connections } = useBilling();
 
   const canCreateConnection = useMemo(() => {
     if (!connections?.remaining && !connections?.unlimited) return false;
     return (connections?.unlimited && !connections?.remaining) || (connections?.remaining ?? 0) > 0;
   }, [connections]);
   const pathname = useLocation().pathname;
-
-  const handleUpgrade = async () => {
-    if (attach) {
-      toast.promise(
-        attach({
-          productId: 'pro-example',
-          successUrl: `${window.location.origin}/mail/inbox?success=true`,
-        }),
-        {
-          success: 'Redirecting to payment...',
-          error: 'Failed to process upgrade. Please try again later.',
-        },
-      );
-    }
-  };
 
   return (
     <Dialog onOpenChange={onOpenChange}>
@@ -71,23 +55,6 @@ export const AddConnectionDialog = ({
             {m['pages.settings.connections.connectEmailDescription']()}
           </DialogDescription>
         </DialogHeader>
-        {!canCreateConnection && (
-          <div className="mt-2 flex justify-between gap-2 rounded-lg border border-red-800 bg-red-800/20 p-2">
-            <span className="text-sm">
-              You can only connect 1 email in the free tier.{' '}
-              <span
-                onClick={handleUpgrade}
-                className="hover:bg-subtleWhite hover:text-subtleBlack cursor-pointer underline"
-              >
-                Start 7 day free trial
-              </span>{' '}
-              to connect more.
-            </span>
-            <Button onClick={handleUpgrade} className="text-sm">
-              $20<span className="text-muted-foreground -ml-2 text-xs">/month</span>
-            </Button>
-          </div>
-        )}
         <motion.div
           className="mt-4 grid grid-cols-2 gap-4"
           initial={{ opacity: 0 }}

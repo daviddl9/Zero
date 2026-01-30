@@ -15,7 +15,7 @@ import {
   LockIcon,
   Clock,
 } from '@/components/icons/icons';
-import { MessageSquareIcon } from 'lucide-react';
+import { MessageSquareIcon, BrainIcon, Sparkles, WorkflowIcon } from 'lucide-react';
 import { m } from '@/paraglide/messages';
 
 export interface NavItem {
@@ -169,15 +169,35 @@ export const navigationConfig: Record<string, NavConfig> = {
             icon: Stars,
           },
           {
+            title: m['navigation.settings.aiModel'](),
+            url: '/settings/ai-model',
+            icon: BrainIcon,
+          },
+          {
+            title: m['navigation.settings.skills'](),
+            url: '/settings/skills',
+            icon: Sparkles,
+          },
+          {
+            title: m['navigation.settings.memory'](),
+            url: '/settings/memory',
+            icon: BrainIcon,
+          },
+          {
+            title: m['navigation.settings.workflows'](),
+            url: '/settings/workflows',
+            icon: WorkflowIcon,
+          },
+          {
             title: m['navigation.settings.labels'](),
             url: '/settings/labels',
             icon: Sheet,
           },
-          //   {
-          //     title: m['navigation.settings.categories'](),
-          //     url: '/settings/categories',
-          //     icon: Tabs,
-          //   },
+          {
+            title: m['navigation.settings.categories'](),
+            url: '/settings/categories',
+            icon: Tabs,
+          },
           {
             title: m['navigation.settings.signatures'](),
             url: '/settings/signatures',

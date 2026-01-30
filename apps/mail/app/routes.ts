@@ -2,7 +2,6 @@ import { type RouteConfig, index, layout, prefix, route } from '@react-router/de
 
 export default [
   index('page.tsx'),
-  route('/home', 'home/page.tsx'),
 
   route('/api/mailto-handler', 'mailto-handler.ts'),
 
@@ -42,11 +41,16 @@ export default [
         route('/danger-zone', '(routes)/settings/danger-zone/page.tsx'),
         route('/general', '(routes)/settings/general/page.tsx'),
         route('/labels', '(routes)/settings/labels/page.tsx'),
-        // route('/categories', '(routes)/settings/categories/page.tsx'),
+        route('/categories', '(routes)/settings/categories/page.tsx'),
         route('/notifications', '(routes)/settings/notifications/page.tsx'),
         route('/privacy', '(routes)/settings/privacy/page.tsx'),
         route('/security', '(routes)/settings/security/page.tsx'),
         route('/shortcuts', '(routes)/settings/shortcuts/page.tsx'),
+        route('/ai-model', '(routes)/settings/ai-model/page.tsx'),
+        route('/skills', '(routes)/settings/skills/page.tsx'),
+        route('/memory', '(routes)/settings/memory/page.tsx'),
+        route('/workflows', '(routes)/settings/workflows/page.tsx'),
+        route('/workflows/:id', '(routes)/settings/workflows/[id]/page.tsx'),
         route('/*', '(routes)/settings/[...settings]/page.tsx'),
       ]),
     ),

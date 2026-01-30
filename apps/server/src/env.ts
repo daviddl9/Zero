@@ -1,25 +1,50 @@
-import type { ThinkingMCP, WorkflowRunner, ZeroDB, ZeroMCP } from './main';
-import type { ZeroAgent, ZeroDriver } from './routes/agent';
-import { env as _env } from 'cloudflare:workers';
+import type { ThinkingMCP, ThreadSyncWorker, WorkflowRunner, ZeroDB, ZeroMCP } from './main';
+import type { ShardRegistry, ZeroAgent, ZeroDriver } from './routes/agent';
 import type { QueryableHandler } from 'dormroom';
+
+// Determine if we're running in standalone/Node.js mode
+// This check happens at module load time before any Cloudflare imports
+const isStandaloneRuntime =
+  typeof process !== 'undefined' &&
+  (process.env.STANDALONE === 'true' || process.env.SELF_HOSTED === 'true');
+
+// Only import from cloudflare:workers when running in Cloudflare Workers
+// In standalone mode, we'll provide a mock env object
+let _env: unknown = {};
+if (!isStandaloneRuntime) {
+  // Dynamic import to avoid the import being processed in Node.js
+  // This uses require which is synchronous and available in the Cloudflare Workers runtime
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _env = require('cloudflare:workers').env;
+  } catch {
+    // Fallback for environments where cloudflare:workers is not available
+    _env = {};
+  }
+}
 
 export type ZeroEnv = {
   ZERO_DRIVER: DurableObjectNamespace<ZeroDriver & QueryableHandler>;
+  SHARD_REGISTRY: DurableObjectNamespace<ShardRegistry & QueryableHandler>;
   ZERO_DB: DurableObjectNamespace<ZeroDB>;
   ZERO_AGENT: DurableObjectNamespace<ZeroAgent>;
   ZERO_MCP: DurableObjectNamespace<ZeroMCP & QueryableHandler>;
   THINKING_MCP: DurableObjectNamespace<ThinkingMCP & QueryableHandler>;
   WORKFLOW_RUNNER: DurableObjectNamespace<WorkflowRunner & QueryableHandler>;
+
+  THREAD_SYNC_WORKER: DurableObjectNamespace<ThreadSyncWorker>;
+  SYNC_THREADS_WORKFLOW: Workflow;
+  SYNC_THREADS_COORDINATOR_WORKFLOW: Workflow;
   HYPERDRIVE: { connectionString: string };
+  pending_emails_status: KVNamespace;
+  pending_emails_payload: KVNamespace;
+  scheduled_emails: KVNamespace;
+  send_email_queue: Queue;
   snoozed_emails: KVNamespace;
   gmail_sub_age: KVNamespace;
-  subscribe_queue: Queue;
   AI: Ai;
   gmail_history_id: KVNamespace;
   gmail_processing_threads: KVNamespace;
-  subscribed_accounts: KVNamespace;
-  connection_labels: KVNamespace;
-  prompts_storage: KVNamespace;
   NODE_ENV: 'local' | 'development' | 'production';
   JWT_SECRET: 'secret';
   ELEVENLABS_API_KEY: '1234567890';
@@ -55,7 +80,6 @@ export type ZeroEnv = {
   REDIS_URL: string;
   REDIS_TOKEN: string;
   OPENAI_API_KEY: string;
-  BRAIN_URL: string;
   COMPOSIO_API_KEY: string;
   GROQ_API_KEY: string;
   EARLY_ACCESS_ENABLED: string;
@@ -80,8 +104,39 @@ export type ZeroEnv = {
   AXIOM_DATASET: string;
   THREADS_BUCKET: R2Bucket;
   thread_queue: Queue;
-  VECTORIZE: VectorizeIndex;
-  VECTORIZE_MESSAGE: VectorizeIndex;
+  DEV_PROXY: string;
+  MEET_AUTH_HEADER: string;
+  MEET_API_URL: string;
+  ENABLE_MEET: 'true' | 'false';
+  OTEL_EXPORTER_OTLP_ENDPOINT?: string;
+  OTEL_EXPORTER_OTLP_HEADERS?: string;
+  OTEL_SERVICE_NAME?: string;
+  DD_API_KEY: string;
+  DD_APP_KEY: string;
+  DD_SITE: string;
+  // Encryption master key for user API keys (AES-256-GCM)
+  ENCRYPTION_MASTER_KEY?: string;
+  // Memory feature toggle for AI draft learning
+  MEMORY_ENABLED?: boolean;
+
+  // Self-hosted / Standalone mode configuration
+  SELF_HOSTED?: string;
+  STANDALONE?: string;
+
+  // BullMQ / Job Queue configuration (for self-hosted mode)
+  REDIS_HOST?: string;
+  REDIS_PORT?: string;
+  REDIS_PASSWORD?: string;
+  ENABLE_JOB_QUEUE?: string;
+  ENABLE_SCHEDULER?: string;
+  WORKER_CONCURRENCY?: string;
+
+  // S3/MinIO configuration (for self-hosted object storage)
+  S3_ENDPOINT?: string;
+  S3_ACCESS_KEY?: string;
+  S3_SECRET_KEY?: string;
+  S3_BUCKET?: string;
+  S3_REGION?: string;
 };
 
 const env = _env as ZeroEnv;

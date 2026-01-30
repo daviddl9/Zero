@@ -4,21 +4,21 @@ import { useActiveConnection } from '@/hooks/use-connections';
 import { ResizablePanel } from '@/components/ui/resizable';
 import { useSearchValue } from '@/hooks/use-search-value';
 import { useState, useEffect, useCallback } from 'react';
+import useSearchLabels from '@/hooks/use-labels-search';
 import { useQueryClient } from '@tanstack/react-query';
 import { AIChat } from '@/components/create/ai-chat';
 import { useTRPC } from '@/providers/query-provider';
+import { X, Expand, Plus, Bug } from 'lucide-react';
 import { Tools } from '../../../server/src/types';
+import { useDevMode } from '@/hooks/use-dev-mode';
+import { useDoState } from '../mail/use-do-state';
 import { useBilling } from '@/hooks/use-billing';
-import { PromptsDialog } from './prompts-dialog';
 import { Button } from '@/components/ui/button';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useLabels } from '@/hooks/use-labels';
-
 import { useAgentChat } from 'agents/ai-react';
-import { X, Expand, Plus } from 'lucide-react';
-import { Gauge } from '@/components/ui/gauge';
+import { IncomingMessageType } from '../party';
 import { useParams } from 'react-router';
-
 import { useAgent } from 'agents/react';
 import { useQueryState } from 'nuqs';
 import { cn } from '@/lib/utils';
@@ -31,8 +31,10 @@ interface ChatHeaderProps {
   onToggleViewMode: () => void;
   isFullScreen: boolean;
   isPopup: boolean;
-  isPro: boolean;
   onNewChat: () => void;
+  showDevTools?: boolean;
+  onToggleDevTools?: () => void;
+  isDevMode?: boolean;
 }
 
 function ChatHeader({
@@ -41,11 +43,11 @@ function ChatHeader({
   onToggleViewMode,
   isFullScreen,
   isPopup,
-  isPro,
   onNewChat,
+  showDevTools,
+  onToggleDevTools,
+  isDevMode,
 }: ChatHeaderProps) {
-  const [, setPricingDialog] = useQueryState('pricingDialog');
-  const { chatMessages } = useBilling();
   return (
     <div className="relative flex items-center justify-between px-2.5 pb-[10px] pt-[13px]">
       <TooltipProvider delayDuration={0}>
@@ -117,42 +119,33 @@ function ChatHeader({
           </>
         )}
 
-        {!isPro && (
-          <>
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild className="md:h-fit md:px-2">
-                  <div>
-                    <Gauge
-                      max={chatMessages.included_usage}
-                      value={chatMessages.usage}
-                      size="small"
-                      showValue={true}
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    You've used {chatMessages.usage} out of {chatMessages.included_usage} chat
-                    messages.
-                  </p>
-                  <p className="mb-2">Upgrade for unlimited messages!</p>
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPricingDialog('true');
-                    }}
-                    className="h-8 w-full"
-                  >
-                    Start 7 day free trial
-                  </Button>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </>
+        {isDevMode && onToggleDevTools && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={onToggleDevTools}
+                  variant="ghost"
+                  className={cn(
+                    'md:h-fit md:px-2',
+                    showDevTools && 'bg-purple-100 dark:bg-purple-900/30',
+                  )}
+                >
+                  <Bug
+                    className={cn(
+                      'h-4 w-4',
+                      showDevTools
+                        ? 'text-purple-600 dark:text-purple-400'
+                        : 'dark:text-iconDark text-iconLight',
+                    )}
+                  />
+                  <span className="sr-only">Toggle dev tools</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{showDevTools ? 'Hide' : 'Show'} dev tools</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
-
-        <PromptsDialog />
 
         <TooltipProvider delayDuration={0}>
           <Tooltip>
@@ -336,7 +329,7 @@ export function useAISidebar() {
 function AISidebar({ className }: AISidebarProps) {
   const { open, setOpen, isFullScreen, setIsFullScreen, toggleViewMode, isSidebar, isPopup } =
     useAISidebar();
-  const { isPro, track, refetch: refetchBilling } = useBilling();
+  const { track, refetch: refetchBilling } = useBilling();
   const queryClient = useQueryClient();
   const trpc = useTRPC();
   const [threadId] = useQueryState('threadId');
@@ -344,12 +337,68 @@ function AISidebar({ className }: AISidebarProps) {
   const { refetch: refetchLabels } = useLabels();
   const [searchValue] = useSearchValue();
   const { data: activeConnection } = useActiveConnection();
+  const [, setDoState] = useDoState();
+  const { labels } = useSearchLabels();
+  const isDevMode = useDevMode();
+
+  // Dev tools visibility state persisted to localStorage
+  const [showDevTools, setShowDevTools] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ai-dev-tools') === 'true';
+    }
+    return false;
+  });
+
+  const toggleDevTools = useCallback(() => {
+    setShowDevTools((prev) => {
+      const newValue = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('ai-dev-tools', String(newValue));
+      }
+      return newValue;
+    });
+  }, []);
+
+  const onMessage = useCallback(
+    (message: any) => {
+      try {
+        const parsedData = JSON.parse(message.data);
+        const { type } = parsedData;
+        if (type === IncomingMessageType.Mail_Get) {
+          const { threadId } = parsedData;
+          queryClient.invalidateQueries({
+            queryKey: trpc.mail.get.queryKey({ id: threadId }),
+          });
+        } else if (type === IncomingMessageType.Mail_List) {
+          const { folder } = parsedData;
+          queryClient.invalidateQueries({
+            queryKey: trpc.mail.listThreads.infiniteQueryKey({
+              folder,
+              labelIds: labels,
+              q: searchValue.value,
+            }),
+          });
+        } else if (type === IncomingMessageType.User_Topics) {
+          queryClient.invalidateQueries({
+            queryKey: trpc.labels.list.queryKey(),
+          });
+        } else if (type === IncomingMessageType.Do_State) {
+          const { isSyncing, syncingFolders, storageSize, counts, shards } = parsedData;
+          setDoState({ isSyncing, syncingFolders, storageSize, counts: counts ?? [], shards });
+        }
+      } catch (error) {
+        console.error('error parsing party message', error, { rawMessage: message.data });
+      }
+    },
+    [queryClient, trpc, labels, searchValue.value, setDoState],
+  );
 
   const agent = useAgent({
     agent: 'ZeroAgent',
     name: activeConnection?.id ? String(activeConnection.id) : 'general',
     host: `${import.meta.env.VITE_PUBLIC_BACKEND_URL}`,
     onError: (e) => console.log(e),
+    onMessage,
   });
 
   const chatState = useAgentChat({
@@ -458,11 +507,13 @@ function AISidebar({ className }: AISidebarProps) {
                       onToggleViewMode={toggleViewMode}
                       isFullScreen={isFullScreen}
                       isPopup={isPopup}
-                      isPro={isPro ?? false}
                       onNewChat={handleNewChat}
+                      showDevTools={showDevTools}
+                      onToggleDevTools={toggleDevTools}
+                      isDevMode={isDevMode}
                     />
                     <div className="relative flex-1 overflow-hidden">
-                      <AIChat {...chatState} />
+                      <AIChat {...chatState} showDevTools={showDevTools} />
                     </div>
                   </div>
                 </div>
@@ -504,11 +555,13 @@ function AISidebar({ className }: AISidebarProps) {
                   onToggleViewMode={toggleViewMode}
                   isFullScreen={isFullScreen}
                   isPopup={isPopup}
-                  isPro={isPro ?? false}
                   onNewChat={handleNewChat}
+                  showDevTools={showDevTools}
+                  onToggleDevTools={toggleDevTools}
+                  isDevMode={isDevMode}
                 />
                 <div className="relative flex-1 overflow-hidden">
-                  <AIChat {...chatState} />
+                  <AIChat {...chatState} showDevTools={showDevTools} />
                 </div>
               </div>
             </div>

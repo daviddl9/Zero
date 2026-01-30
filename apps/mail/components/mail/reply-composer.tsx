@@ -1,3 +1,4 @@
+import { useUndoSend } from '@/hooks/use-undo-send';
 import { constructReplyBody, constructForwardBody } from '@/lib/utils';
 import { useActiveConnection } from '@/hooks/use-connections';
 import { useEmailAliases } from '@/hooks/use-email-aliases';
@@ -13,7 +14,7 @@ import { useDraft } from '@/hooks/use-drafts';
 import { m } from '@/paraglide/messages';
 import type { Sender } from '@/types';
 import { useQueryState } from 'nuqs';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import posthog from 'posthog-js';
 import { toast } from 'sonner';
 
@@ -36,6 +37,12 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
   const { data: activeConnection } = useActiveConnection();
   const { data: settings, isLoading: settingsLoading } = useSettings();
   const { data: session } = useSession();
+  const { handleUndoSend } = useUndoSend();
+
+  // State for calculated recipients and subject
+  const [calculatedTo, setCalculatedTo] = useState<string[]>([]);
+  const [calculatedCc, setCalculatedCc] = useState<string[]>([]);
+  const [calculatedSubject, setCalculatedSubject] = useState<string>('');
 
   // Find the specific message to reply to
   const replyToMessage =
@@ -43,12 +50,31 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
 
   // Initialize recipients and subject when mode changes
   useEffect(() => {
-    if (!replyToMessage || !mode || !activeConnection?.email) return;
+    if (!replyToMessage || !mode || !activeConnection?.email) {
+      setCalculatedTo([]);
+      setCalculatedCc([]);
+      setCalculatedSubject('');
+      return;
+    }
 
     const userEmail = activeConnection.email.toLowerCase();
     const senderEmail = replyToMessage.sender.email.toLowerCase();
 
-    // Set subject based on mode
+    // Construct subject line
+    const originalSubject = replyToMessage.subject || '';
+    let subject = originalSubject;
+    
+    if (mode === 'reply' || mode === 'replyAll') {
+      // Add "Re: " prefix if not already present
+      if (!originalSubject.startsWith('Re: ')) {
+        subject = `Re: ${originalSubject}`;
+      } else {
+        subject = originalSubject;
+      }
+    } else if (mode === 'forward') {
+      // For forward, keep subject as-is
+      subject = originalSubject;
+    }
 
     if (mode === 'reply') {
       // Reply to sender
@@ -62,8 +88,9 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
         to.push(replyToMessage.to[0].email);
       }
 
-      // Initialize email composer with these recipients
-      // Note: The actual initialization happens in the EmailComposer component
+      setCalculatedTo(to);
+      setCalculatedCc([]);
+      setCalculatedSubject(subject);
     } else if (mode === 'replyAll') {
       const to: string[] = [];
       const cc: string[] = [];
@@ -89,10 +116,14 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
         }
       });
 
-      // Initialize email composer with these recipients
+      setCalculatedTo(to);
+      setCalculatedCc(cc);
+      setCalculatedSubject(subject);
     } else if (mode === 'forward') {
       // For forward, we start with empty recipients
-      // Just set the subject and include the original message
+      setCalculatedTo([]);
+      setCalculatedCc([]);
+      setCalculatedSubject(subject);
     }
   }, [mode, replyToMessage, activeConnection?.email]);
 
@@ -103,6 +134,7 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
     subject: string;
     message: string;
     attachments: File[];
+    scheduleAt?: string;
   }) => {
     if (!replyToMessage || !activeConnection?.email) return;
 
@@ -177,7 +209,7 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
               //   replyToMessage.decodedBody,
             );
 
-      await sendEmail({
+      const result = await sendEmail({
         to: toRecipients,
         cc: ccRecipients,
         bcc: bccRecipients,
@@ -199,6 +231,7 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
         threadId: replyToMessage?.threadId,
         isForward: mode === 'forward',
         originalMessage: replyToMessage.decodedBody,
+        scheduleAt: data.scheduleAt,
       });
 
       posthog.capture('Reply Email Sent');
@@ -206,7 +239,16 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
       // Reset states
       setMode(null);
       await refetch();
-      toast.success(m['pages.createEmail.emailSent']());
+      
+      handleUndoSend(result, settings, {
+        to: data.to,
+        cc: data.cc,
+        bcc: data.bcc,
+        subject: data.subject,
+        message: data.message,
+        attachments: data.attachments,
+        scheduleAt: data.scheduleAt,
+      });
     } catch (error) {
       console.error('Error sending email:', error);
       toast.error(m['pages.createEmail.failedToSendEmail']());
@@ -241,6 +283,10 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
 
   if (!mode || !emailData) return null;
 
+  const finalTo = calculatedTo.length > 0 ? calculatedTo : ensureEmailArray(draft?.to);
+  const finalCc = calculatedCc.length > 0 ? calculatedCc : ensureEmailArray(draft?.cc);
+  const finalSubject = calculatedSubject || draft?.subject || '';
+
   return (
     <div className="w-full rounded-2xl overflow-visible border">
       <EmailComposer
@@ -253,10 +299,10 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
           setActiveReplyId(null);
         }}
         initialMessage={draft?.content ?? latestDraft?.decodedBody}
-        initialTo={ensureEmailArray(draft?.to)}
-        initialCc={ensureEmailArray(draft?.cc)}
+        initialTo={finalTo}
+        initialCc={finalCc}
         initialBcc={ensureEmailArray(draft?.bcc)}
-        initialSubject={draft?.subject}
+        initialSubject={finalSubject}
         autofocus={true}
         settingsLoading={settingsLoading}
         replyingTo={replyToMessage?.sender.email}

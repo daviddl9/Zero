@@ -1,4 +1,8 @@
-import { parseFrom as _parseFrom, parseAddressList as _parseAddressList } from 'email-addresses';
+import emailAddresses from 'email-addresses';
+
+// email-addresses exports a function with methods attached
+const _parseFrom = emailAddresses.parseFrom;
+const _parseAddressList = emailAddresses.parseAddressList;
 import type { Sender } from '../types';
 
 type ListUnsubscribeAction =

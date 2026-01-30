@@ -236,6 +236,14 @@ export enum Tools {
   InboxRag = 'inboxRag',
   BuildGmailSearchQuery = 'buildGmailSearchQuery',
   GetCurrentDate = 'getCurrentDate',
+  ReadFullThread = 'readFullThread',
+  SearchEmails = 'searchEmails',
+  SearchSimilarEmails = 'searchSimilarEmails',
+  // AI Copilot tools
+  Think = 'think',
+  ListSkills = 'listSkills',
+  ReadSkill = 'readSkill',
+  ReadSkillReference = 'readSkillReference',
 }
 
 export type AppContext = Context<{ Bindings: Env }>;
@@ -247,4 +255,11 @@ export enum EPrompts {
   Chat = 'Chat',
   Compose = 'Compose',
   //   ThreadLabels = 'ThreadLabels'
+}
+
+export interface IEmailSendBatch {
+  messageId: string;
+  connectionId: string;
+  mail?: IOutgoingMessage & { draftId?: string };
+  sendAt?: number;
 }
