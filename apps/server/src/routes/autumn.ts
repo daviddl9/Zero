@@ -38,6 +38,12 @@ type AutumnContext = {
 
 export const autumnApi = new Hono<AutumnContext>()
   .use('*', async (c, next) => {
+    // In self-hosted mode, Autumn billing is optional
+    const autumnKey = getEnvVar('AUTUMN_SECRET_KEY');
+    if (!autumnKey && isSelfHostedMode()) {
+      return c.json({ error: 'Billing not configured in self-hosted mode' }, 501);
+    }
+
     const { sessionUser } = c.var;
     c.set(
       'customerData',
@@ -51,7 +57,7 @@ export const autumnApi = new Hono<AutumnContext>()
             },
           },
     );
-    c.set('autumn', new Autumn({ secretKey: getEnvVar('AUTUMN_SECRET_KEY') }));
+    c.set('autumn', new Autumn({ secretKey: autumnKey }));
     await next();
   })
   .post('/customers', async (c) => {
