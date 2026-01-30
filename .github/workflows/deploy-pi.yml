@@ -22,8 +22,8 @@ jobs:
 
       - name: Build and deploy with Docker Compose
         run: |
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml pull --ignore-pull-failures
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml up -d --build --remove-orphans
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml pull --ignore-pull-failures
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up -d --build --remove-orphans
 
       - name: Cleanup old images
         run: docker image prune -f
@@ -35,7 +35,7 @@ jobs:
 
           # Wait for server to be healthy (up to 2 minutes)
           for i in {1..24}; do
-            if docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml ps server | grep -q "healthy"; then
+            if docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml ps server | grep -q "healthy"; then
               echo "Server is healthy"
               break
             fi
@@ -45,20 +45,20 @@ jobs:
 
       - name: Health check
         run: |
-          curl -sf http://localhost:3001/health || exit 1
+          curl -sf --insecure https://localhost/health || exit 1
           echo "Health check passed!"
 
       - name: Show service status
-        run: docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml ps
+        run: docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml ps
 
       - name: Show logs on failure
         if: failure()
         run: |
           echo "=== Server Logs ==="
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml logs --tail=100 server
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml logs --tail=100 server
           echo ""
           echo "=== Nginx Logs ==="
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml logs --tail=50 nginx
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml logs --tail=50 nginx
           echo ""
           echo "=== All Services Status ==="
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml ps -a
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml ps -a

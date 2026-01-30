@@ -52,6 +52,11 @@ apps/mail/scripts.ts
 .wrangler
 worker-configuration.d.ts
 
+# SSL/TLS certificates
+certs/
+*.crt
+*.key
+
 .dev.vars.*
 .react-router
 
