@@ -1,7 +1,20 @@
 import { Autumn, fetchPricingTable } from 'autumn-js';
+import { isSelfHostedMode } from '../lib/self-hosted';
 import type { HonoContext } from '../ctx';
-import { env } from '../env';
 import { Hono } from 'hono';
+
+// Helper to get environment variables - works in both Cloudflare and standalone modes
+function getEnvVar(name: string, defaultValue = ''): string {
+  if (isSelfHostedMode()) {
+    return process.env[name] || defaultValue;
+  }
+  try {
+    const { env } = require('../env');
+    return env[name] || defaultValue;
+  } catch {
+    return process.env[name] || defaultValue;
+  }
+}
 
 const sanitizeCustomerBody = (body: any) => {
   let bodyCopy = { ...body };
@@ -38,7 +51,7 @@ export const autumnApi = new Hono<AutumnContext>()
             },
           },
     );
-    c.set('autumn', new Autumn({ secretKey: env.AUTUMN_SECRET_KEY }));
+    c.set('autumn', new Autumn({ secretKey: getEnvVar('AUTUMN_SECRET_KEY') }));
     await next();
   })
   .post('/customers', async (c) => {
@@ -139,7 +152,7 @@ export const autumnApi = new Hono<AutumnContext>()
       await autumn!.customers
         .billingPortal(customerData.customerId, {
           ...body,
-          return_url: `${env.VITE_PUBLIC_APP_URL}`,
+          return_url: `${getEnvVar('VITE_PUBLIC_APP_URL', 'http://localhost:3000')}`,
         })
         .then((data) => data.data),
     );

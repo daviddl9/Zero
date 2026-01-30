@@ -10,12 +10,15 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { contextStorage } from 'hono/context-storage';
 import { Redis } from 'ioredis';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { HonoAdapter } from '@bull-board/hono';
+import { trpcServer } from '@hono/trpc-server';
+import { createLocalJWKSet, jwtVerify } from 'jose';
 
 // Job Queue
 import {
@@ -50,8 +53,25 @@ import {
 // Database schema
 import * as schema from './db/schema';
 
+// Standalone modules
+import { standaloneEnv } from './lib/standalone-env';
+import { createStandaloneAuth, type StandaloneAuth } from './lib/standalone-auth';
+import {
+  initStandaloneDb,
+  getStandaloneZeroDB,
+} from './lib/standalone-server-utils';
+
+// Routes
+import { publicRouter } from './routes/auth';
+import { autumnApi } from './routes/autumn';
+import { aiRouter } from './routes/ai';
+import { appRouter } from './trpc';
+
+// Types
+import type { HonoContext, HonoVariables, SessionUser } from './ctx';
+
 // Type definitions
-interface StandaloneEnv {
+interface StandaloneConfig {
   databaseUrl: string;
   redisHost: string;
   redisPort: number;
@@ -60,10 +80,17 @@ interface StandaloneEnv {
   s3Config: ObjectStoreConfig | null;
 }
 
+// Extended Hono context for standalone
+type StandaloneHonoContext = {
+  Variables: HonoVariables & {
+    standaloneAuth: StandaloneAuth;
+  };
+};
+
 /**
  * Parse environment configuration
  */
-function getConfig(): StandaloneEnv {
+function getConfig(): StandaloneConfig {
   return {
     databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zerodotemail',
     redisHost: process.env.REDIS_HOST || 'localhost',
@@ -119,10 +146,14 @@ function initializeRedis(host: string, port: number, password?: string): Redis {
 async function main() {
   console.log('[Standalone] Starting Zero Email server...');
   const config = getConfig();
+  const env = standaloneEnv();
 
   // Initialize database
   console.log('[Standalone] Connecting to PostgreSQL...');
   const { db, client: pgClient } = initializeDatabase(config.databaseUrl);
+
+  // Initialize standalone database for server utilities
+  initStandaloneDb(db);
 
   // Initialize Redis
   console.log('[Standalone] Connecting to Redis...');
@@ -190,14 +221,85 @@ async function main() {
   const workers = createUnifiedWorker({ concurrency: 2 });
   console.log(`[Standalone] Started ${workers.length} workers`);
 
-  // Create Hono app
-  const app = new Hono();
+  // Create standalone auth
+  console.log('[Standalone] Initializing authentication...');
+  const auth = createStandaloneAuth(db, redis);
+
+  // Create Hono app with context storage
+  const app = new Hono<StandaloneHonoContext>();
+
+  // Context storage middleware (must be first)
+  app.use(contextStorage());
 
   // CORS
-  app.use('*', cors({
-    origin: process.env.CORS_ORIGIN || '*',
-    credentials: true,
-  }));
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => {
+        if (!origin) return null;
+        let hostname: string;
+        try {
+          hostname = new URL(origin).hostname;
+        } catch {
+          return null;
+        }
+        const cookieDomain = env.COOKIE_DOMAIN;
+        if (!cookieDomain) return origin; // Allow all in development
+        if (hostname === cookieDomain || hostname.endsWith('.' + cookieDomain)) {
+          return origin;
+        }
+        // Also allow configured CORS origins
+        const corsOrigin = process.env.CORS_ORIGIN;
+        if (corsOrigin === '*' || corsOrigin === origin) {
+          return origin;
+        }
+        return null;
+      },
+      credentials: true,
+      allowHeaders: ['Content-Type', 'Authorization'],
+      exposeHeaders: ['X-Zero-Redirect'],
+    }),
+  );
+
+  // Authentication middleware
+  app.use('*', async (c, next) => {
+    // Store auth instance in context
+    c.set('auth', auth as unknown as HonoVariables['auth']);
+    c.set('standaloneAuth', auth);
+
+    // Get session from cookies
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    c.set('sessionUser', session?.user as SessionUser | undefined);
+
+    // Handle JWT token authentication (for API clients)
+    if (c.req.header('Authorization') && !session?.user) {
+      const token = c.req.header('Authorization')?.split(' ')[1];
+
+      if (token) {
+        try {
+          const localJwks = await auth.api.getJwks();
+          const jwks = createLocalJWKSet(localJwks);
+
+          const { payload } = await jwtVerify(token, jwks);
+          const userId = payload.sub;
+
+          if (userId) {
+            const dbRpc = getStandaloneZeroDB(userId);
+            const user = await dbRpc.findUser();
+            c.set('sessionUser', user as SessionUser | undefined);
+          }
+        } catch (error) {
+          console.warn('[Standalone] JWT verification failed:', error);
+        }
+      }
+    }
+
+    await next();
+
+    // Cleanup
+    c.set('sessionUser', undefined);
+    c.set('auth', undefined as unknown as HonoVariables['auth']);
+  });
 
   // Health check
   app.get('/health', async (c) => {
@@ -224,7 +326,6 @@ async function main() {
     // Check S3/MinIO if configured
     if (objectStore) {
       try {
-        // Simple check - try to verify bucket exists
         await objectStore.exists('__health_check__');
         (health.services as Record<string, string>).objectStorage = 'healthy';
       } catch {
@@ -236,7 +337,10 @@ async function main() {
     return c.json(health);
   });
 
-  // Bull Board admin UI (optional - may fail due to hono version compatibility)
+  // Root redirect
+  app.get('/', (c) => c.redirect(env.VITE_PUBLIC_APP_URL));
+
+  // Bull Board admin UI (optional)
   try {
     const serverAdapter = new HonoAdapter('/admin/queues');
     createBullBoard({
@@ -249,6 +353,53 @@ async function main() {
     console.warn('[Standalone] Failed to initialize Bull Board UI:', error);
     console.warn('[Standalone] Job queue is still operational, but admin UI is unavailable');
   }
+
+  // =========================================================================
+  // API Routes
+  // =========================================================================
+
+  // Create the API router
+  const api = new Hono<HonoContext>();
+
+  // AI routes
+  api.route('/ai', aiRouter);
+
+  // Autumn (billing) routes
+  api.route('/autumn', autumnApi);
+
+  // Public routes (providers list)
+  api.route('/public', publicRouter);
+
+  // Auth routes (better-auth handler)
+  api.on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {
+    return auth.handler(c.req.raw);
+  });
+
+  // tRPC routes
+  api.use(
+    trpcServer({
+      endpoint: '/api/trpc',
+      router: appRouter,
+      createContext: (_, c) => {
+        return {
+          c,
+          sessionUser: c.var['sessionUser'],
+          auth: c.var['auth'],
+        };
+      },
+      allowMethodOverride: true,
+      onError: (opts) => {
+        console.error('[Standalone] tRPC error:', opts.error);
+      },
+    }),
+  );
+
+  // Mount API routes
+  app.route('/api', api);
+
+  // =========================================================================
+  // Job Queue Routes
+  // =========================================================================
 
   // Pub/Sub webhook endpoint (for Gmail push notifications)
   app.post('/api/google/pubsub', async (c) => {
@@ -265,7 +416,6 @@ async function main() {
 
       console.log(`[Standalone] Received pub/sub notification for ${emailAddress}, historyId: ${historyId}`);
 
-      // Get subscription name from attributes
       const subscriptionName = message.attributes?.subscription || body.subscription;
 
       if (!subscriptionName) {
@@ -273,11 +423,10 @@ async function main() {
         return c.json({ message: 'OK' }, 200);
       }
 
-      // Queue a sync coordinator job
       const { addJob } = await import('./lib/job-queue');
       await addJob(JOB_NAMES.SYNC_COORDINATOR, {
-        userId: '', // Will be extracted from subscription name
-        connectionId: '', // Will be extracted from subscription name
+        userId: '',
+        connectionId: '',
         triggerType: 'pubsub',
         historyId,
       });
@@ -285,11 +434,11 @@ async function main() {
       return c.json({ message: 'OK' }, 200);
     } catch (error) {
       console.error('[Standalone] Error processing pub/sub:', error);
-      return c.json({ message: 'OK' }, 200); // Always return 200 to prevent retries
+      return c.json({ message: 'OK' }, 200);
     }
   });
 
-  // Scheduled jobs trigger endpoint (for external cron like systemd timers)
+  // Scheduled jobs trigger endpoint
   app.post('/api/cron/trigger', async (c) => {
     const jobName = c.req.query('job');
 
@@ -335,7 +484,10 @@ async function main() {
     return c.json(stats);
   });
 
-  // Graceful shutdown
+  // =========================================================================
+  // Graceful Shutdown
+  // =========================================================================
+
   const shutdown = async () => {
     console.log('[Standalone] Shutting down...');
 
@@ -354,7 +506,10 @@ async function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  // Start server
+  // =========================================================================
+  // Start Server
+  // =========================================================================
+
   console.log(`[Standalone] Starting HTTP server on port ${config.port}...`);
   serve({
     fetch: app.fetch,
@@ -363,6 +518,12 @@ async function main() {
 
   console.log(`[Standalone] Server running at http://localhost:${config.port}`);
   console.log(`[Standalone] Bull Board UI at http://localhost:${config.port}/admin/queues`);
+  console.log('[Standalone] API routes available:');
+  console.log('  - /api/auth/*      - Authentication (better-auth)');
+  console.log('  - /api/trpc/*      - tRPC API');
+  console.log('  - /api/public/*    - Public routes');
+  console.log('  - /api/ai/*        - AI routes');
+  console.log('  - /api/autumn/*    - Billing routes');
 }
 
 /**
@@ -413,7 +574,6 @@ function createJobDependencies(
 
     // Scheduled emails
     getScheduledEmails: async (params: { beforeTime: Date; limit: number }) => {
-      // Query from scheduled_emails KV or database
       const result = await kvStores.scheduled_emails.list({ limit: params.limit });
       const emails = [];
       for (const key of result.keys) {
@@ -439,7 +599,6 @@ function createJobDependencies(
 
     // Cleanup
     deleteOldExecutions: async (olderThan: Date) => {
-      // Delete from database
       const result = await db.delete(schema.workflowExecution)
         .where((row, { lt }) => lt(row.createdAt, olderThan))
         .returning();
@@ -457,7 +616,7 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
     JOB_NAMES.SYNC_THREADS,
     createSyncThreadsProcessor({
       getConnection: deps.getConnection as never,
-      getDriver: () => null, // Placeholder - needs email driver integration
+      getDriver: () => null,
       syncThread: async () => null,
       storeThread: async () => {},
       evaluateTriggers: async () => {},
@@ -485,7 +644,7 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
     JOB_NAMES.SEND_EMAIL,
     createSendEmailProcessor({
       getConnection: deps.getConnection as never,
-      getDriver: () => null, // Placeholder
+      getDriver: () => null,
       updateEmailStatus: deps.updateEmailStatus,
       deleteEmailPayload: deps.deleteEmailPayload,
     }),

@@ -9,14 +9,45 @@ import { createDriver } from './driver';
 import { eq } from 'drizzle-orm';
 import { createDb } from '../db';
 import { Effect } from 'effect';
-import { env } from '../env';
+import { isSelfHostedMode } from './self-hosted';
+
+// Conditionally import env - in standalone mode, we may not have cloudflare bindings
+const getEnv = () => {
+  // In standalone mode, use process.env directly for non-cloudflare features
+  if (isSelfHostedMode()) {
+    return null;
+  }
+  // In Cloudflare mode, use the env module
+  // This will be dynamically imported to avoid issues with cloudflare:workers
+  return require('../env').env;
+};
 
 const mbToBytes = (mb: number) => mb * 1024 * 1024;
 
 // 8GB
 const MAX_SHARD_SIZE = mbToBytes(8192);
 
+/**
+ * Get a database RPC instance for the given user.
+ *
+ * In Cloudflare mode, returns a Durable Object stub.
+ * In standalone mode, returns a StandaloneDbRpc instance.
+ */
 export const getZeroDB = async (userId: string) => {
+  // Check if running in standalone mode
+  if (isSelfHostedMode()) {
+    const { getStandaloneZeroDB, isStandaloneDbInitialized } = await import('./standalone-server-utils');
+    if (!isStandaloneDbInitialized()) {
+      throw new Error('Standalone database not initialized. The server must call initStandaloneDb() first.');
+    }
+    return getStandaloneZeroDB(userId);
+  }
+
+  // Cloudflare mode
+  const env = getEnv();
+  if (!env?.ZERO_DB) {
+    throw new Error('ZERO_DB Durable Object not available. Are you running in Cloudflare Workers?');
+  }
   const stub = env.ZERO_DB.get(env.ZERO_DB.idFromName(userId));
   const rpcTarget = await stub.setMetaData(userId);
   return rpcTarget;
@@ -35,6 +66,13 @@ class MockExecutionContext implements ExecutionContext {
 }
 
 const getRegistryClient = async (connectionId: string) => {
+  if (isSelfHostedMode()) {
+    throw new Error('Shard registry is not available in standalone mode. Thread data uses S3/MinIO storage instead.');
+  }
+  const env = getEnv();
+  if (!env?.SHARD_REGISTRY) {
+    throw new Error('SHARD_REGISTRY not available. Are you running in Cloudflare Workers?');
+  }
   const registryClient = createClient({
     doNamespace: env.SHARD_REGISTRY,
     configs: [{ name: `connection:${connectionId}:registry` }],
@@ -44,6 +82,13 @@ const getRegistryClient = async (connectionId: string) => {
 };
 
 const getShardClient = async (connectionId: string, shardId: string) => {
+  if (isSelfHostedMode()) {
+    throw new Error('Shard client is not available in standalone mode. Thread data uses S3/MinIO storage instead.');
+  }
+  const env = getEnv();
+  if (!env?.ZERO_DRIVER) {
+    throw new Error('ZERO_DRIVER not available. Are you running in Cloudflare Workers?');
+  }
   const shardClient = createClient({
     doNamespace: env.ZERO_DRIVER,
     ctx: new MockExecutionContext(),
@@ -555,11 +600,37 @@ export const sendDoState = async (connectionId: string) => {
 };
 
 export const getZeroSocketAgent = async (connectionId: string) => {
+  if (isSelfHostedMode()) {
+    // In standalone mode, we don't have WebSocket agents via Durable Objects
+    // Return a mock that does nothing
+    return {
+      invalidateDoStateCache: async () => {},
+      getCachedDoState: async () => null,
+      setCachedDoState: async () => {},
+      broadcastChatMessage: async () => {},
+    };
+  }
+  const env = getEnv();
+  if (!env?.ZERO_AGENT) {
+    throw new Error('ZERO_AGENT not available. Are you running in Cloudflare Workers?');
+  }
   const stub = env.ZERO_AGENT.get(env.ZERO_AGENT.idFromName(connectionId));
   return stub;
 };
 
+/**
+ * Get the active connection for the current session user.
+ *
+ * Works in both Cloudflare and standalone modes.
+ */
 export const getActiveConnection = async () => {
+  // In standalone mode, use the standalone implementation
+  if (isSelfHostedMode()) {
+    const { getStandaloneActiveConnection } = await import('./standalone-server-utils');
+    return getStandaloneActiveConnection();
+  }
+
+  // Cloudflare mode
   const c = getContext<HonoContext>();
   const { sessionUser, auth } = c.var;
   if (!sessionUser) throw new Error('Session Not Found');
@@ -620,7 +691,23 @@ export const verifyToken = async (token: string) => {
   return !!data;
 };
 
+/**
+ * Reset a connection by clearing its tokens.
+ *
+ * Works in both Cloudflare and standalone modes.
+ */
 export const resetConnection = async (connectionId: string) => {
+  // In standalone mode, use the standalone implementation
+  if (isSelfHostedMode()) {
+    const { resetConnection: standaloneResetConnection } = await import('./standalone-server-utils');
+    return standaloneResetConnection(connectionId);
+  }
+
+  // Cloudflare mode
+  const env = getEnv();
+  if (!env?.HYPERDRIVE) {
+    throw new Error('HYPERDRIVE not available. Are you running in Cloudflare Workers?');
+  }
   const { db, conn } = createDb(env.HYPERDRIVE.connectionString);
   await db
     .update(connection)

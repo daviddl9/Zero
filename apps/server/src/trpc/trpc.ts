@@ -1,7 +1,6 @@
 import { getActiveConnection, getZeroDB } from '../lib/server-utils';
 import { Ratelimit, type RatelimitConfig } from '@upstash/ratelimit';
 import type { HonoContext, HonoVariables } from '../ctx';
-import { getConnInfo } from 'hono/cloudflare-workers';
 import { initTRPC, TRPCError } from '@trpc/server';
 import { createLoggingMiddleware } from '../lib/trpc-logging';
 
@@ -9,10 +8,49 @@ import { redis, getNativeRedisClient } from '../lib/services';
 import {
   NativeRedisRateLimiter,
   shouldUseNativeRedis,
+  isSelfHostedMode,
 } from '../lib/self-hosted';
-import { env } from '../env';
 import type { Context } from 'hono';
 import superjson from 'superjson';
+
+// Helper to get client IP - works in both Cloudflare and standalone modes
+function getClientIp(c: Context<HonoContext>): string {
+  // Try standard headers first (works in standalone mode with reverse proxy)
+  const forwardedFor = c.req.header('x-forwarded-for');
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0]?.trim() || 'no-ip';
+  }
+
+  const realIp = c.req.header('x-real-ip');
+  if (realIp) {
+    return realIp;
+  }
+
+  // In Cloudflare mode, use getConnInfo
+  if (!isSelfHostedMode()) {
+    try {
+      const { getConnInfo } = require('hono/cloudflare-workers');
+      return getConnInfo(c).remote.address ?? 'no-ip';
+    } catch {
+      // Fall through to default
+    }
+  }
+
+  return 'no-ip';
+}
+
+// Helper to get NODE_ENV - works in both modes
+function getNodeEnv(): string {
+  if (isSelfHostedMode()) {
+    return process.env.NODE_ENV || 'development';
+  }
+  try {
+    const { env } = require('../env');
+    return env.NODE_ENV || 'development';
+  } catch {
+    return process.env.NODE_ENV || 'development';
+  }
+}
 
 type TrpcContext = {
   c: Context<HonoContext>;
@@ -160,7 +198,7 @@ export const createRateLimiterMiddleware = (config: {
   t.middleware(async ({ next, ctx, input }) => {
     // Skip rate limiting in non-production if Redis fails
     try {
-      const finalIp = getConnInfo(ctx.c).remote.address ?? 'no-ip';
+      const finalIp = getClientIp(ctx.c);
       const prefix = config.generatePrefix(ctx, input);
 
       let success: boolean;
@@ -213,7 +251,7 @@ export const createRateLimiterMiddleware = (config: {
       }
     } catch (error) {
       // In production, re-throw rate limit errors
-      if (env.NODE_ENV === 'production') {
+      if (getNodeEnv() === 'production') {
         throw error;
       }
       // In dev/local, log and skip rate limiting if Redis unavailable
