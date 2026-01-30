@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - staging
+      - main
   workflow_dispatch: # Manual trigger
 
 jobs:
