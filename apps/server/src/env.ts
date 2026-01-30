@@ -1,8 +1,27 @@
 import type { ThinkingMCP, ThreadSyncWorker, WorkflowRunner, ZeroDB, ZeroMCP } from './main';
 import type { ShardRegistry, ZeroAgent, ZeroDriver } from './routes/agent';
-
-import { env as _env } from 'cloudflare:workers';
 import type { QueryableHandler } from 'dormroom';
+
+// Determine if we're running in standalone/Node.js mode
+// This check happens at module load time before any Cloudflare imports
+const isStandaloneRuntime =
+  typeof process !== 'undefined' &&
+  (process.env.STANDALONE === 'true' || process.env.SELF_HOSTED === 'true');
+
+// Only import from cloudflare:workers when running in Cloudflare Workers
+// In standalone mode, we'll provide a mock env object
+let _env: unknown = {};
+if (!isStandaloneRuntime) {
+  // Dynamic import to avoid the import being processed in Node.js
+  // This uses require which is synchronous and available in the Cloudflare Workers runtime
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _env = require('cloudflare:workers').env;
+  } catch {
+    // Fallback for environments where cloudflare:workers is not available
+    _env = {};
+  }
+}
 
 export type ZeroEnv = {
   ZERO_DRIVER: DurableObjectNamespace<ZeroDriver & QueryableHandler>;
