@@ -138,7 +138,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ['pnpm', 'run', 'db:migrate']
+    command: ['sh', '/app/apps/server/scripts/migrate.sh']
     restart: 'no'
 
   # ========================================
