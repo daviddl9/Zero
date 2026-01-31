@@ -9,7 +9,7 @@ const isStandaloneRuntime =
   (process.env.STANDALONE === 'true' || process.env.SELF_HOSTED === 'true');
 
 // Only import from cloudflare:workers when running in Cloudflare Workers
-// In standalone mode, we'll provide a mock env object
+// In standalone mode, we'll use process.env directly
 let _env: unknown = {};
 if (!isStandaloneRuntime) {
   // Dynamic import to avoid the import being processed in Node.js
@@ -21,6 +21,10 @@ if (!isStandaloneRuntime) {
     // Fallback for environments where cloudflare:workers is not available
     _env = {};
   }
+} else {
+  // In standalone mode, use process.env so that modules like the Google driver
+  // can access environment variables (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, etc.)
+  _env = process.env;
 }
 
 export type ZeroEnv = {
