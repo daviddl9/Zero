@@ -1,11 +1,14 @@
 import { authProviders, customProviders, isProviderEnabled } from '../lib/auth-providers';
+import { isSelfHostedMode } from '../lib/self-hosted';
 import type { HonoContext } from '../ctx';
 import { Hono } from 'hono';
 
 const publicRouter = new Hono<HonoContext>();
 
 publicRouter.get('/providers', async (c) => {
-  const env = c.env as unknown as Record<string, string>;
+  const env = isSelfHostedMode()
+    ? (process.env as unknown as Record<string, string>)
+    : (c.env as unknown as Record<string, string>);
   const isProd = env.NODE_ENV === 'production';
 
   const authProviderStatus = authProviders(env).map((provider) => {
