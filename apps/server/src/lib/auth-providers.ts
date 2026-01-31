@@ -26,6 +26,11 @@ export const customProviders: ProviderConfig[] = [
   // }
 ];
 
+// In self-hosted mode, always force consent to ensure we get a refresh token
+// Google only returns refresh tokens on first auth or when prompt=consent
+const isSelfHosted = () =>
+  process.env.SELF_HOSTED === 'true' || process.env.STANDALONE === 'true';
+
 export const authProviders = (env: Record<string, string>): ProviderConfig[] => [
   {
     id: 'google',
@@ -36,7 +41,7 @@ export const authProviders = (env: Record<string, string>): ProviderConfig[] => 
       { name: 'GOOGLE_CLIENT_SECRET', source: 'Google Cloud Console' },
     ],
     config: {
-      prompt: env.FORCE_GOOGLE_AUTH ? 'consent' : undefined,
+      prompt: env.FORCE_GOOGLE_AUTH || isSelfHosted() ? 'consent' : undefined,
       accessType: 'offline',
       scope: [
         'https://mail.google.com/',

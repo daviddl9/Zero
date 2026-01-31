@@ -281,6 +281,20 @@
       "when": 1768550947433,
       "tag": "0038_spooky_skaar",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1769596410083,
+      "tag": "0039_careful_miracleman",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1769700000000,
+      "tag": "0037_add_ai_settings_columns",
+      "breakpoints": true
     }
   ]
 }
