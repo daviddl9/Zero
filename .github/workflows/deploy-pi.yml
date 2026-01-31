@@ -18,8 +18,8 @@ jobs:
     steps:
       - name: Pull latest code
         run: |
-          git fetch origin staging
-          git reset --hard origin/staging
+          git fetch origin ${{ github.ref_name }}
+          git reset --hard origin/${{ github.ref_name }}
 
       - name: Build and deploy with Docker Compose
         run: |
