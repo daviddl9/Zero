@@ -36,12 +36,42 @@ type AutumnContext = {
   };
 } & HonoContext;
 
+// Check if billing is configured
+function isBillingConfigured(): boolean {
+  const autumnKey = getEnvVar('AUTUMN_SECRET_KEY');
+  return !!autumnKey;
+}
+
 export const autumnApi = new Hono<AutumnContext>()
   .use('*', async (c, next) => {
     // In self-hosted mode, Autumn billing is optional
-    const autumnKey = getEnvVar('AUTUMN_SECRET_KEY');
-    if (!autumnKey && isSelfHostedMode()) {
-      return c.json({ error: 'Billing not configured in self-hosted mode' }, 501);
+    // Return graceful responses that don't trigger sign-out
+    if (!isBillingConfigured() && isSelfHostedMode()) {
+      // For customer endpoints, return a mock "free tier" customer
+      // This prevents the frontend from signing out due to billing errors
+      const path = c.req.path;
+      if (path.includes('/customers') || path.includes('/check') || path.includes('/attach')) {
+        return c.json({
+          id: c.var.sessionUser?.id || 'self-hosted',
+          name: c.var.sessionUser?.name || 'Self-Hosted User',
+          email: c.var.sessionUser?.email || '',
+          products: [],
+          features: {},
+          billing_disabled: true,
+        });
+      }
+      // For other endpoints, return empty/no-op responses
+      if (path.includes('/track')) {
+        return c.json({ success: true });
+      }
+      if (path.includes('/billing_portal') || path.includes('/openBillingPortal')) {
+        return c.json({ url: null, billing_disabled: true });
+      }
+      if (path.includes('/pricing_table')) {
+        return c.json({ products: [], billing_disabled: true });
+      }
+      // Fallback for any other endpoint
+      return c.json({ billing_disabled: true });
     }
 
     const { sessionUser } = c.var;
