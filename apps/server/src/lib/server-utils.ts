@@ -381,7 +381,7 @@ export const getThread: (
   // In standalone mode, fetch thread directly from Gmail API
   if (isSelfHostedMode()) {
     const agent = await getZeroAgent(connectionId);
-    const thread = await agent.getThread(threadId);
+    const thread = await agent.stub.getThread(threadId);
     if (!thread) {
       throw new Error(`Thread ${threadId} not found`);
     }
@@ -408,7 +408,7 @@ export const modifyThreadLabelsInDB = async (
   // In standalone mode, modify labels via Gmail API directly
   if (isSelfHostedMode()) {
     const agent = await getZeroAgent(connectionId);
-    await agent.modifyLabels([threadId], { addLabels, removeLabels });
+    await agent.stub.modifyLabels([threadId], { addLabels, removeLabels });
     return;
   }
 
