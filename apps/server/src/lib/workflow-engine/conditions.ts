@@ -1,4 +1,5 @@
-import { generateText } from 'ai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import type {
   TriggerData,
   SenderMatchParams,
@@ -98,27 +99,34 @@ export class ConditionEvaluator {
     userId: string,
     env: ZeroEnv,
   ): Promise<ConditionResult> {
+    const ClassificationResultSchema = z.object({
+      category: z.string().describe('The classification category (lowercase)'),
+      reasoning: z.string().describe('One sentence explaining why this category was chosen'),
+    });
+
     try {
       const aiConfig = await resolveAIClient(userId, env);
       const model = getSummarizationModel(aiConfig);
 
       const categoriesList = params.categories.join(', ');
 
-      const result = await generateText({
+      const result = await generateObject({
         model,
+        schema: ClassificationResultSchema,
         system: `You are an email classifier. Classify the email into exactly one of these categories: ${categoriesList}, or "other" if none fit well.
 
 Rules:
-- Output ONLY the category name, nothing else
-- Use lowercase
+- Use lowercase for the category
 - If the email clearly fits one category, choose it
-- If unsure or no good fit, output "other"`,
+- If unsure or no good fit, use "other"
+- Provide a brief one-sentence reasoning for your classification`,
         prompt: `Subject: ${triggerData.subject || '(no subject)'}
 From: ${triggerData.sender || '(unknown sender)'}
 Body: ${triggerData.snippet || '(no content)'}`,
       });
 
-      const category = result.text.trim().toLowerCase();
+      const category = result.object.category.trim().toLowerCase();
+      const reasoning = result.object.reasoning;
       const outputIndex = params.categories.findIndex(
         (c) => c.toLowerCase() === category,
       );
@@ -128,13 +136,14 @@ Body: ${triggerData.snippet || '(no content)'}`,
       const matchedCategory = outputIndex >= 0 ? params.categories[outputIndex] : 'other';
 
       console.log(
-        `[AIClassification] Classified as "${matchedCategory}" (outputIndex: ${finalIndex})`,
+        `[AIClassification] Classified as "${matchedCategory}" (outputIndex: ${finalIndex}): ${reasoning}`,
       );
 
       return {
         passed: true, // AI classification always "passes" - it just routes
         outputIndex: finalIndex,
         category: matchedCategory,
+        reasoning,
       };
     } catch (error) {
       console.error('[AIClassification] Error:', error);
@@ -143,6 +152,7 @@ Body: ${triggerData.snippet || '(no content)'}`,
         passed: true,
         outputIndex: params.categories.length,
         category: 'other',
+        reasoning: 'Classification failed due to an error',
       };
     }
   }

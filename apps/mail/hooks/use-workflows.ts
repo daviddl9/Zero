@@ -89,6 +89,7 @@ export interface TestWorkflowResult {
     error?: string;
     outputIndex?: number;
     category?: string;
+    reasoning?: string;
   }>;
   executionPath: string[];
   error?: string;

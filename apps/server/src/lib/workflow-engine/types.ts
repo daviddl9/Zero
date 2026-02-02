@@ -271,6 +271,7 @@ export const ConditionResultSchema = z.object({
   passed: z.boolean(),
   outputIndex: z.number().optional(), // Which output port (0-based)
   category: z.string().optional(), // Matched category name (for AI classification)
+  reasoning: z.string().optional(), // AI reasoning for the classification
 });
 
 export type ConditionResult = z.infer<typeof ConditionResultSchema>;

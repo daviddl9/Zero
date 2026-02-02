@@ -16,6 +16,7 @@ export interface NodeExecutionResult {
   result?: ActionResult;
   outputIndex?: number; // Which output port was selected (for multi-output nodes)
   category?: string; // Matched category (for AI classification)
+  reasoning?: string; // AI reasoning for the classification
 }
 
 /**
@@ -676,6 +677,7 @@ async function executeTestCondition(
       passed: result.passed,
       outputIndex: result.outputIndex,
       category: result.category,
+      reasoning: result.reasoning,
     };
   } catch (error) {
     return {

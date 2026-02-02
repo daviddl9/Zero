@@ -22,6 +22,12 @@ import {
 } from '@/hooks/use-workflows';
 import { m } from '@/paraglide/messages';
 import { Play, Search, Mail, CheckCircle, XCircle, Circle, Loader2 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
 
 interface TestWorkflowModalProps {
@@ -282,9 +288,20 @@ export function TestWorkflowModal({
                           )}
                           <span className="flex-1 truncate">{node.name}</span>
                           {result?.category && (
-                            <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                              {result.category}
-                            </span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-xs text-emerald-600 dark:text-emerald-400 cursor-help">
+                                    {result.category}
+                                  </span>
+                                </TooltipTrigger>
+                                {result?.reasoning && (
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    <p className="text-xs">{result.reasoning}</p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </div>
                       );
