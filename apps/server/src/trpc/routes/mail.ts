@@ -7,6 +7,8 @@ import {
   modifyThreadLabelsInDB,
   deleteAllSpam,
   reSyncThread,
+  getExecutionContext,
+  safeWaitUntil,
 } from '../../lib/server-utils';
 import {
   IGetThreadResponseSchema,
@@ -20,8 +22,6 @@ import { processEmailHtml } from '../../lib/email-processor';
 import { defaultPageSize, FOLDERS } from '../../lib/utils';
 import { toAttachmentFiles } from '../../lib/attachments';
 import { serializedFileSchema } from '../../lib/schemas';
-import { getContext } from 'hono/context-storage';
-import { type HonoContext } from '../../ctx';
 import { TRPCError } from '@trpc/server';
 import { env } from '../../env';
 import { z } from 'zod';
@@ -50,7 +50,7 @@ export const mailRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
 
       return await agent.suggestRecipients(input.query, input.limit);
@@ -85,7 +85,7 @@ export const mailRouter = router({
     .query(async ({ ctx, input }) => {
       const { folder, maxResults, cursor, q, labelIds } = input;
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
 
       console.debug('[listThreads] input:', { folder, maxResults, cursor, q, labelIds });
@@ -251,7 +251,7 @@ export const mailRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
       const { threadId, addLabels, removeLabels } = input;
 
@@ -283,7 +283,7 @@ export const mailRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
       const { threadIds } = await agent.normalizeIds(input.ids);
 
@@ -337,7 +337,7 @@ export const mailRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
       const { threadIds } = await agent.normalizeIds(input.ids);
 
@@ -479,7 +479,7 @@ export const mailRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { activeConnection, sessionUser } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const agent = await getZeroAgent(activeConnection.id, executionCtx);
 
       const { draftId, scheduleAt, attachments, ...mail } = input as typeof input & {
@@ -592,7 +592,7 @@ export const mailRouter = router({
           }
         }
 
-        ctx.c.executionCtx.waitUntil(afterTask());
+        safeWaitUntil(afterTask());
 
         if (isLongTerm) {
           return { success: true, scheduled: true, messageId, sendAt: targetTime };
@@ -617,8 +617,8 @@ export const mailRouter = router({
       console.log('[send] input.threadId:', input);
 
       if (input.threadId)
-        ctx.c.executionCtx.waitUntil(reSyncThread(activeConnection.id, input.threadId));
-      ctx.c.executionCtx.waitUntil(afterTask());
+        safeWaitUntil(reSyncThread(activeConnection.id, input.threadId));
+      safeWaitUntil(afterTask());
       return { success: true };
     }),
   unsend: activeDriverProcedure
@@ -685,7 +685,7 @@ export const mailRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { exec, stub } = await getZeroAgent(activeConnection.id, executionCtx);
       exec(`DELETE FROM threads WHERE thread_id = ?`, input.id);
       await stub.reloadFolder('bin');
@@ -735,7 +735,7 @@ export const mailRouter = router({
     }),
   getEmailAliases: activeDriverProcedure.query(async ({ ctx }) => {
     const { activeConnection } = ctx;
-    const executionCtx = getContext<HonoContext>().executionCtx;
+    const executionCtx = getExecutionContext();
     const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
     return agent.getEmailAliases();
   }),
@@ -803,7 +803,7 @@ export const mailRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { activeConnection } = ctx;
-      const executionCtx = getContext<HonoContext>().executionCtx;
+      const executionCtx = getExecutionContext();
       const { stub: agent } = await getZeroAgent(activeConnection.id, executionCtx);
       return agent.getMessageAttachments(input.messageId) as Promise<
         {

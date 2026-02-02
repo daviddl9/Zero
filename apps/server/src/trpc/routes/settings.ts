@@ -1,6 +1,6 @@
 import { createRateLimiterMiddleware, privateProcedure, publicProcedure, router } from '../trpc';
 import { defaultUserSettings, userSettingsSchema, type UserSettings } from '../../lib/schemas';
-import { getZeroDB } from '../../lib/server-utils';
+import { getZeroDB, safeWaitUntil } from '../../lib/server-utils';
 import { Ratelimit } from '@upstash/ratelimit';
 
 export const settingsRouter = router({
@@ -23,7 +23,7 @@ export const settingsRouter = router({
 
       const settingsRes = userSettingsSchema.safeParse(result.settings);
       if (!settingsRes.success) {
-        ctx.c.executionCtx.waitUntil(db.updateUserSettings(defaultUserSettings));
+        safeWaitUntil(db.updateUserSettings(defaultUserSettings));
         console.log('returning default settings');
         return { settings: defaultUserSettings };
       }

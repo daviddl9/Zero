@@ -12,6 +12,36 @@ import { isSelfHostedMode } from './self-hosted';
 import { createStandaloneAgent } from './standalone-agent';
 import { getStandaloneDb } from './standalone-server-utils';
 
+/**
+ * Safely get ExecutionContext - returns undefined in standalone mode
+ * Use this instead of directly accessing c.executionCtx which throws in Node.js
+ */
+export const getExecutionContext = (): ExecutionContext | undefined => {
+  if (isSelfHostedMode()) {
+    return undefined;
+  }
+  try {
+    const ctx = getContext<HonoContext>();
+    return ctx.executionCtx;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Safely call waitUntil - in standalone mode, just fire the promise
+ * without blocking. In Cloudflare mode, use the execution context's waitUntil.
+ */
+export const safeWaitUntil = (promise: Promise<unknown>): void => {
+  const ctx = getExecutionContext();
+  if (ctx) {
+    ctx.waitUntil(promise);
+  } else {
+    // In standalone mode, just fire the promise and handle errors
+    promise.catch((err) => console.error('[safeWaitUntil] Background task error:', err));
+  }
+};
+
 // Dynamically import dormroom only in Cloudflare mode
 // The dormroom library is Cloudflare Workers specific and doesn't work in Node.js
 let createClient: typeof import('dormroom').createClient | null = null;
