@@ -33,6 +33,15 @@ jobs:
           docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up --build migrations
           echo "Migrations completed"
 
+      - name: Ensure AI settings columns exist
+        run: |
+          # Drizzle migrations can fail on "already exists" errors from older migrations
+          # This ensures the AI settings columns exist regardless of migration state
+          docker exec zero-db psql -U postgres -d zerodotemail -c "
+            ALTER TABLE mail0_user_settings ADD COLUMN IF NOT EXISTS encrypted_openai_key text;
+            ALTER TABLE mail0_user_settings ADD COLUMN IF NOT EXISTS encrypted_gemini_key text;
+          " || echo "Columns already exist or db not ready"
+
       - name: Cleanup old images
         run: docker image prune -f
 
