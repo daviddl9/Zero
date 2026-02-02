@@ -9,6 +9,10 @@ import { createDriver } from './driver';
 import type { IGetThreadsResponse, MailManager } from './driver/types';
 import type { connection } from '../db/schema';
 
+/**
+ * StandaloneAgentStub - The stub interface that matches what server-utils expects
+ * This is accessed as agent.stub.methodName()
+ */
 export interface StandaloneAgentStub {
   // Methods that are no-ops or simplified in standalone mode
   forceReSync(): Promise<void>;
@@ -24,11 +28,7 @@ export interface StandaloneAgentStub {
     maxResults?: number;
     pageToken?: string;
   }): Promise<IGetThreadsResponse>;
-}
-
-export interface StandaloneZeroAgent {
-  stub: StandaloneAgentStub;
-  // Direct driver methods
+  // Direct driver methods also on the stub
   listDrafts: MailManager['listDrafts'];
   getDraft: MailManager['getDraft'];
   createDraft: MailManager['createDraft'];
@@ -45,7 +45,6 @@ export interface StandaloneZeroAgent {
   getThread: MailManager['get'];
   modifyLabels: MailManager['modifyLabels'];
   sendMail: MailManager['create'];
-  sendDraft: MailManager['sendDraft'];
 }
 
 /**
@@ -53,10 +52,11 @@ export interface StandaloneZeroAgent {
  *
  * This wraps the mail driver and provides an interface compatible with
  * the ZeroAgent Durable Object stub used in Cloudflare mode.
+ * Returns { stub: StandaloneAgentStub } where stub has all methods directly accessible.
  */
 export function createStandaloneAgent(
   activeConnection: typeof connection.$inferSelect,
-): { stub: StandaloneZeroAgent } {
+): { stub: StandaloneAgentStub } {
   if (!activeConnection.accessToken || !activeConnection.refreshToken) {
     throw new Error(`Invalid connection: missing tokens for ${activeConnection.id}`);
   }
@@ -70,11 +70,11 @@ export function createStandaloneAgent(
     },
   });
 
-  // Create the stub with methods that interact with the driver
-  const agentStub: StandaloneAgentStub = {
+  // Create the stub with all methods directly accessible
+  // This matches the shape expected by server-utils.ts: agent.stub.methodName()
+  const stub: StandaloneAgentStub = {
+    // Methods that are no-ops or simplified in standalone mode
     async forceReSync(): Promise<void> {
-      // In standalone mode, there's no local cache to resync
-      // The driver calls Gmail API directly each time
       console.log('[StandaloneAgent] forceReSync called - no-op in standalone mode');
     },
 
@@ -87,12 +87,10 @@ export function createStandaloneAgent(
     },
 
     async reloadFolder(_folder: string): Promise<void> {
-      // In standalone mode, there's no local cache to reload
       console.log('[StandaloneAgent] reloadFolder called - no-op in standalone mode');
     },
 
     async syncThread(_opts: { threadId: string }): Promise<void> {
-      // In standalone mode, threads are fetched directly from API
       console.log('[StandaloneAgent] syncThread called - no-op in standalone mode');
     },
 
@@ -112,25 +110,16 @@ export function createStandaloneAgent(
         pageToken: params.pageToken,
       });
     },
-  };
 
-  // Create the full agent with both stub and direct driver methods
-  const agent: StandaloneZeroAgent = {
-    stub: agentStub,
-
-    // Draft operations
+    // Direct driver methods
     listDrafts: driver.listDrafts.bind(driver),
     getDraft: driver.getDraft.bind(driver),
     createDraft: driver.createDraft.bind(driver),
     deleteDraft: driver.deleteDraft.bind(driver),
-
-    // Label operations
     getUserLabels: driver.getUserLabels.bind(driver),
     createLabel: driver.createLabel.bind(driver),
     updateLabel: driver.updateLabel.bind(driver),
     deleteLabel: driver.deleteLabel.bind(driver),
-
-    // Other operations
     rawListThreads: driver.list.bind(driver),
     normalizeIds: driver.normalizeIds.bind(driver),
     getEmailAliases: driver.getEmailAliases.bind(driver),
@@ -139,8 +128,7 @@ export function createStandaloneAgent(
     getThread: driver.get.bind(driver),
     modifyLabels: driver.modifyLabels.bind(driver),
     sendMail: driver.create.bind(driver),
-    sendDraft: driver.sendDraft.bind(driver),
   };
 
-  return { stub: agent };
+  return { stub };
 }
