@@ -37,10 +37,17 @@ jobs:
         run: |
           # Drizzle migrations can fail on "already exists" errors from older migrations
           # This ensures the AI settings columns exist regardless of migration state
-          docker exec zero-db psql -U postgres -d zerodotemail -c "
-            ALTER TABLE mail0_user_settings ADD COLUMN IF NOT EXISTS encrypted_openai_key text;
-            ALTER TABLE mail0_user_settings ADD COLUMN IF NOT EXISTS encrypted_gemini_key text;
-          " || echo "Columns already exist or db not ready"
+          # Uses the server container which has DATABASE_URL already configured
+          docker exec zero-server node -e "
+            const postgres = require('postgres');
+            const sql = postgres(process.env.DATABASE_URL);
+            (async () => {
+              await sql\\\`ALTER TABLE mail0_user_settings ADD COLUMN IF NOT EXISTS encrypted_openai_key text\\\`;
+              await sql\\\`ALTER TABLE mail0_user_settings ADD COLUMN IF NOT EXISTS encrypted_gemini_key text\\\`;
+              console.log('AI settings columns ensured');
+              await sql.end();
+            })().catch(e => console.log('Error or columns exist:', e.message));
+          " || echo "Migration step completed"
 
       - name: Cleanup old images
         run: docker image prune -f
