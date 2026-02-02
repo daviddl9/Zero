@@ -9,6 +9,8 @@ import { eq } from 'drizzle-orm';
 import { createDb } from '../db';
 import { Effect } from 'effect';
 import { isSelfHostedMode } from './self-hosted';
+import { createStandaloneAgent } from './standalone-agent';
+import { getStandaloneDb } from './standalone-server-utils';
 
 // Dynamically import dormroom only in Cloudflare mode
 // The dormroom library is Cloudflare Workers specific and doesn't work in Node.js
@@ -342,10 +344,21 @@ const getThreadEffect = (connectionId: string, threadId: string) => {
 export const getThread: (
   connectionId: string,
   threadId: string,
-) => Promise<{ result: IGetThreadResponse; shardId: string }> = async (
+) => Promise<{ result: IGetThreadResponse; shardId: string | null }> = async (
   connectionId: string,
   threadId: string,
 ) => {
+  // In standalone mode, fetch thread directly from Gmail API
+  if (isSelfHostedMode()) {
+    const agent = await getZeroAgent(connectionId);
+    const thread = await agent.getThread(threadId);
+    if (!thread) {
+      throw new Error(`Thread ${threadId} not found`);
+    }
+    return { result: thread, shardId: null };
+  }
+
+  // Cloudflare mode: search across shards
   const result = await Effect.runPromise(getThreadEffect(connectionId, threadId));
   if (!result.result) {
     throw new Error(`Thread ${threadId} not found`);
@@ -362,8 +375,16 @@ export const modifyThreadLabelsInDB = async (
   addLabels: string[],
   removeLabels: string[],
 ) => {
+  // In standalone mode, modify labels via Gmail API directly
+  if (isSelfHostedMode()) {
+    const agent = await getZeroAgent(connectionId);
+    await agent.modifyLabels([threadId], { addLabels, removeLabels });
+    return;
+  }
+
+  // Cloudflare mode: update local DB cache
   const threadResult = await getThread(connectionId, threadId);
-  const shard = await getShardClient(connectionId, threadResult.shardId);
+  const shard = await getShardClient(connectionId, threadResult.shardId!);
   await shard.stub.modifyThreadLabelsInDB(threadId, addLabels, removeLabels);
 
   const agent = await getZeroSocketAgent(connectionId);
@@ -406,6 +427,19 @@ const getActiveShardId = async (connectionId: string) => {
 };
 
 export const getZeroAgent = async (connectionId: string, executionCtx?: ExecutionContext) => {
+  // In standalone mode, use the standalone agent that wraps the Gmail driver directly
+  if (isSelfHostedMode()) {
+    const db = getStandaloneDb();
+    const activeConnection = await db.query.connection.findFirst({
+      where: eq(connection.id, connectionId),
+    });
+    if (!activeConnection) {
+      throw new Error(`Connection not found: ${connectionId}`);
+    }
+    return createStandaloneAgent(activeConnection);
+  }
+
+  // Cloudflare mode - use Durable Objects
   if (!executionCtx) {
     executionCtx = new MockExecutionContext();
   }
@@ -416,11 +450,29 @@ export const getZeroAgent = async (connectionId: string, executionCtx?: Executio
 };
 
 export const getZeroAgentFromShard = async (connectionId: string, shardId: string) => {
+  // In standalone mode, shards don't exist - use the standalone agent
+  if (isSelfHostedMode()) {
+    const db = getStandaloneDb();
+    const activeConnection = await db.query.connection.findFirst({
+      where: eq(connection.id, connectionId),
+    });
+    if (!activeConnection) {
+      throw new Error(`Connection not found: ${connectionId}`);
+    }
+    return createStandaloneAgent(activeConnection);
+  }
+
   const agent = await getShardClient(connectionId, shardId);
   return agent;
 };
 
 export const forceReSync = async (connectionId: string) => {
+  // In standalone mode, there's no local cache to clear
+  if (isSelfHostedMode()) {
+    console.log('[forceReSync] No-op in standalone mode - no local cache to clear');
+    return;
+  }
+
   const registry = await getRegistryClient(connectionId);
   const allShards = await listShards(registry);
 
@@ -442,8 +494,18 @@ export const forceReSync = async (connectionId: string) => {
 };
 
 export const reSyncThread = async (connectionId: string, threadId: string) => {
+  // In standalone mode, syncThread is a no-op since we fetch from API directly
+  if (isSelfHostedMode()) {
+    console.log(`[reSyncThread] No-op in standalone mode for thread ${threadId}`);
+    return;
+  }
+
   try {
     const { shardId } = await getThread(connectionId, threadId);
+    if (!shardId) {
+      console.error(`[ZeroAgent] No shard found for threadId: ${threadId}`);
+      return;
+    }
     const agent = await getZeroAgentFromShard(connectionId, shardId);
     await agent.stub.syncThread({ threadId });
   } catch (error) {
@@ -475,7 +537,23 @@ export const getThreadsFromDB = async (
     q: params.q,
   });
 
-  // Use fast path for simple queries without search
+  // In standalone mode, always use the standalone agent (no shards to aggregate)
+  if (isSelfHostedMode()) {
+    const agent = await getZeroAgent(connectionId);
+    const result = await agent.stub.getThreadsFromDB({
+      ...params,
+      maxResults: maxResults,
+    });
+
+    console.log('[getThreadsFromDB] standalone result:', {
+      threadCount: result.threads.length,
+      nextPageToken: result.nextPageToken ? `"${String(result.nextPageToken).substring(0, 30)}..."` : null,
+    });
+
+    return result;
+  }
+
+  // Cloudflare mode: Use fast path for simple queries without search
   // This covers both first page and subsequent pages
   if (maxResults === defaultPageSize && !params.q) {
     const result = await Effect.promise(async () => {
@@ -494,6 +572,7 @@ export const getThreadsFromDB = async (
     return result;
   }
 
+  // Cloudflare mode: Aggregate across shards for complex queries
   return Effect.runPromise(
     aggregateShardDataEffect<IGetThreadsResponse>(
       connectionId,
@@ -530,6 +609,11 @@ export const getThreadsFromDB = async (
 };
 
 export const getDatabaseSize = async (connectionId: string): Promise<number> => {
+  // In standalone mode, there's no local database cache
+  if (isSelfHostedMode()) {
+    return 0;
+  }
+
   return Effect.runPromise(
     aggregateShardDataEffect<number>(
       connectionId,
@@ -540,6 +624,19 @@ export const getDatabaseSize = async (connectionId: string): Promise<number> => 
 };
 
 export const deleteAllSpam = async (connectionId: string) => {
+  // In standalone mode, use the Gmail API directly
+  if (isSelfHostedMode()) {
+    const db = getStandaloneDb();
+    const activeConnection = await db.query.connection.findFirst({
+      where: eq(connection.id, connectionId),
+    });
+    if (!activeConnection) {
+      throw new Error(`Connection not found: ${connectionId}`);
+    }
+    const driver = connectionToDriver(activeConnection);
+    return driver.deleteAllSpam();
+  }
+
   return Effect.runPromise(
     aggregateShardDataEffect<{ deletedCount: number }>(
       connectionId,
@@ -554,6 +651,11 @@ export const deleteAllSpam = async (connectionId: string) => {
 type CountResult = { label: string; count: number };
 
 const getCounts = async (connectionId: string): Promise<CountResult[]> => {
+  // In standalone mode, there's no local count cache
+  if (isSelfHostedMode()) {
+    return [];
+  }
+
   const shardCountArrays = await Effect.runPromise(
     aggregateShardDataEffect<CountResult[]>(
       connectionId,
@@ -575,6 +677,11 @@ const getCounts = async (connectionId: string): Promise<CountResult[]> => {
  * @returns
  */
 export const sendDoState = async (connectionId: string) => {
+  // In standalone mode, there's no WebSocket broadcasting
+  if (isSelfHostedMode()) {
+    return;
+  }
+
   try {
     const agent = await getZeroSocketAgent(connectionId);
 
