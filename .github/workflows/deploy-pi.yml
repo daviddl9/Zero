@@ -26,6 +26,13 @@ jobs:
           docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml pull --ignore-pull-failures
           docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up -d --build --remove-orphans
 
+      - name: Run database migrations
+        run: |
+          # Force re-run migrations (one-shot containers don't re-run on `up`)
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml rm -f migrations || true
+          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up --build migrations
+          echo "Migrations completed"
+
       - name: Cleanup old images
         run: docker image prune -f
 
