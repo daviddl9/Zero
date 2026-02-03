@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: [self-hosted, pi]
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: /home/david/apps/zero-email
