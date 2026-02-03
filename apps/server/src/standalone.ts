@@ -63,6 +63,15 @@ import {
   getStandaloneZeroDB,
 } from './lib/standalone-server-utils';
 
+// Workflow engine imports
+import {
+  WorkflowTriggerService,
+  createWorkflowExecutor,
+  type SyncedThreadData,
+  type ActionContext,
+} from './lib/workflow-engine';
+import { createDriver } from './lib/driver';
+
 // Routes
 import { publicRouter } from './routes/auth';
 import { autumnApi } from './routes/autumn';
@@ -628,6 +637,20 @@ function createJobDependencies(
   kvStores: ReturnType<KVStoreFactory['createDefaultStores']>,
   redis: Redis,
 ) {
+  const env = standaloneEnv();
+
+  // Helper to create a mail driver from a connection
+  const connectionToDriver = (connection: typeof schema.connection.$inferSelect) => {
+    return createDriver(connection.providerId, {
+      auth: {
+        userId: connection.userId,
+        accessToken: connection.accessToken || '',
+        refreshToken: connection.refreshToken || '',
+        email: connection.email,
+      },
+    });
+  };
+
   return {
     // Connection helpers
     getConnection: async (connectionId: string) => {
@@ -635,6 +658,175 @@ function createJobDependencies(
         where: (c, { eq }) => eq(c.id, connectionId),
       });
       return result || null;
+    },
+
+    // Get driver from connection
+    getDriver: (connection: typeof schema.connection.$inferSelect) => {
+      if (!connection.accessToken || !connection.refreshToken) {
+        console.warn(`[JobDeps] Connection ${connection.id} missing tokens`);
+        return null;
+      }
+      return connectionToDriver(connection);
+    },
+
+    // Sync a single thread from the email provider
+    syncThread: async (connectionId: string, threadId: string) => {
+      const connection = await db.query.connection.findFirst({
+        where: (c, { eq }) => eq(c.id, connectionId),
+      });
+      if (!connection || !connection.accessToken || !connection.refreshToken) {
+        console.warn(`[JobDeps] Cannot sync thread: connection ${connectionId} not found or missing tokens`);
+        return null;
+      }
+
+      const driver = connectionToDriver(connection);
+      const threadData = await driver.get(threadId);
+
+      if (!threadData || !threadData.latest) {
+        return null;
+      }
+
+      return {
+        sender: threadData.latest.sender?.email || '',
+        receivedOn: threadData.latest.receivedOn,
+        subject: threadData.latest.subject || '',
+        tags: threadData.labels.map((label) => ({ id: label.id, name: label.name })),
+        unread: threadData.hasUnread,
+        body: threadData.latest.decodedBody || threadData.latest.body || '',
+        decodedBody: threadData.latest.decodedBody,
+      };
+    },
+
+    // List history changes from Gmail
+    listHistory: async (connectionId: string, historyId: string) => {
+      const connection = await db.query.connection.findFirst({
+        where: (c, { eq }) => eq(c.id, connectionId),
+      });
+      if (!connection || !connection.accessToken || !connection.refreshToken) {
+        console.warn(`[JobDeps] Cannot list history: connection ${connectionId} not found or missing tokens`);
+        return { history: [] };
+      }
+
+      const driver = connectionToDriver(connection);
+      const result = await driver.listHistory<{
+        messagesAdded?: Array<{ message?: { threadId?: string; labelIds?: string[] } }>;
+        labelsAdded?: Array<{ message?: { threadId?: string }; labelIds?: string[] }>;
+        labelsRemoved?: Array<{ message?: { threadId?: string }; labelIds?: string[] }>;
+      }>(historyId);
+
+      return { history: result.history };
+    },
+
+    // Evaluate workflow triggers for a synced thread
+    evaluateTriggers: async (
+      connectionId: string,
+      threadData: {
+        id: string;
+        subject: string;
+        sender: string;
+        labels: Array<{ id: string; name: string }>;
+        receivedOn: string;
+        unread: boolean;
+        body: string;
+      },
+    ) => {
+      const connection = await db.query.connection.findFirst({
+        where: (c, { eq }) => eq(c.id, connectionId),
+      });
+      if (!connection) {
+        console.warn(`[JobDeps] Cannot evaluate triggers: connection ${connectionId} not found`);
+        return;
+      }
+
+      console.log(`[JobDeps] Evaluating workflow triggers for thread ${threadData.id}`);
+
+      // Build the synced thread data format expected by WorkflowTriggerService
+      const syncedThreadData: SyncedThreadData = {
+        id: threadData.id,
+        subject: threadData.subject,
+        sender: {
+          email: threadData.sender,
+        },
+        labels: threadData.labels,
+        receivedOn: threadData.receivedOn,
+        unread: threadData.unread,
+        body: threadData.body,
+      };
+
+      // Use WorkflowTriggerService to evaluate and create execution records
+      const triggerService = new WorkflowTriggerService(db as never);
+      const result = await triggerService.evaluateAndTrigger(
+        connection.userId,
+        connectionId,
+        syncedThreadData,
+        'email_received',
+      );
+
+      if (result.triggeredWorkflows.length > 0) {
+        console.log(`[JobDeps] Triggered ${result.triggeredWorkflows.length} workflows for thread ${threadData.id}`);
+
+        // Execute each triggered workflow
+        const driver = connectionToDriver(connection);
+        for (const triggered of result.triggeredWorkflows) {
+          console.log(`[JobDeps] Executing workflow ${triggered.workflowName} (${triggered.executionId})`);
+
+          try {
+            // Build action context for workflow execution
+            const actionContext: ActionContext = {
+              connectionId,
+              triggerData: {
+                threadId: threadData.id,
+                subject: threadData.subject,
+                sender: threadData.sender,
+                labels: threadData.labels.map((l) => l.id),
+                snippet: threadData.body,
+                receivedAt: threadData.receivedOn,
+              },
+              modifyThread: async (tid, opts) => {
+                await driver.modifyLabels([tid], opts);
+              },
+              getLabels: async () => {
+                const labels = await driver.getUserLabels();
+                return labels.map((l) => ({ id: l.id, name: l.name }));
+              },
+              createDraft: async (opts) => {
+                const result = await driver.createDraft({
+                  to: opts.to.join(','),
+                  subject: opts.subject,
+                  message: opts.body,
+                  threadId: opts.threadId || null,
+                  headers: {},
+                });
+                return { id: result.id || '' };
+              },
+            };
+
+            // Create and run the executor
+            const executor = createWorkflowExecutor(
+              db as never,
+              actionContext,
+              connection.userId,
+              env as never,
+            );
+
+            const execResult = await executor.execute(triggered.executionId);
+
+            if (execResult.success) {
+              console.log(`[JobDeps] Workflow ${triggered.workflowName} completed successfully`);
+            } else {
+              console.error(`[JobDeps] Workflow ${triggered.workflowName} failed: ${execResult.error}`);
+            }
+          } catch (error) {
+            console.error(`[JobDeps] Failed to execute workflow ${triggered.workflowName}:`, error);
+          }
+        }
+      }
+
+      if (result.errors.length > 0) {
+        for (const err of result.errors) {
+          console.error(`[JobDeps] Workflow trigger error for ${err.workflowId}: ${err.error}`);
+        }
+      }
     },
 
     // History ID management
@@ -710,11 +902,16 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
     JOB_NAMES.SYNC_THREADS,
     createSyncThreadsProcessor({
       getConnection: deps.getConnection as never,
-      getDriver: () => null,
-      syncThread: async () => null,
-      storeThread: async () => {},
-      evaluateTriggers: async () => {},
-      reloadFolder: async () => {},
+      getDriver: deps.getDriver as never,
+      syncThread: deps.syncThread,
+      storeThread: async () => {
+        // Thread storage is handled by S3/MinIO in standalone mode
+        // For now, we skip local storage and rely on API fetches
+      },
+      evaluateTriggers: deps.evaluateTriggers,
+      reloadFolder: async () => {
+        // Folder reload is a no-op in standalone mode (no local cache)
+      },
     }),
   );
 
@@ -726,10 +923,39 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
       setHistoryId: deps.setHistoryId,
       acquireLock: deps.acquireLock,
       releaseLock: deps.releaseLock,
-      listHistory: async () => ({ history: [] }),
-      syncThread: async () => ({ success: true }),
-      modifyLabels: async () => {},
-      reloadFolder: async () => {},
+      listHistory: deps.listHistory,
+      syncThread: async (connectionId: string, threadId: string) => {
+        // Sync thread and evaluate triggers
+        const threadData = await deps.syncThread(connectionId, threadId);
+        if (threadData) {
+          // Evaluate workflow triggers for the synced thread
+          await deps.evaluateTriggers(connectionId, {
+            id: threadId,
+            subject: threadData.subject,
+            sender: threadData.sender,
+            labels: threadData.tags,
+            receivedOn: threadData.receivedOn,
+            unread: threadData.unread,
+            body: threadData.body || '',
+          });
+          return { success: true };
+        }
+        return { success: false };
+      },
+      modifyLabels: async (connectionId: string, threadId: string, addLabels: string[], removeLabels: string[]) => {
+        const connection = await deps.getConnection(connectionId);
+        if (!connection || !connection.accessToken || !connection.refreshToken) {
+          console.warn(`[JobDeps] Cannot modify labels: connection ${connectionId} not found`);
+          return;
+        }
+        const driver = deps.getDriver(connection);
+        if (driver) {
+          await driver.modifyLabels([threadId], { addLabels, removeLabels });
+        }
+      },
+      reloadFolder: async () => {
+        // Folder reload is a no-op in standalone mode (no local cache)
+      },
     }),
   );
 
@@ -738,7 +964,7 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
     JOB_NAMES.SEND_EMAIL,
     createSendEmailProcessor({
       getConnection: deps.getConnection as never,
-      getDriver: () => null,
+      getDriver: deps.getDriver as never,
       updateEmailStatus: deps.updateEmailStatus,
       deleteEmailPayload: deps.deleteEmailPayload,
     }),
