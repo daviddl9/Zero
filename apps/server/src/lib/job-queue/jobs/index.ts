@@ -40,3 +40,6 @@ export {
   processCleanupWorkflowExecutionsJob,
   createCleanupWorkflowExecutionsProcessor,
 } from './cleanup-workflow-executions.job';
+
+// Polling jobs (standalone mode)
+export { createPollNewEmailsProcessor } from './poll-new-emails.job';

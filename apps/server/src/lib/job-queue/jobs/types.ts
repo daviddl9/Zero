@@ -13,6 +13,7 @@ export const JOB_NAMES = {
   PROCESS_SCHEDULED_EMAILS: 'process-scheduled-emails',
   CLEANUP_WORKFLOW_EXECUTIONS: 'cleanup-workflow-executions',
   THREAD_WORKFLOW: 'thread-workflow',
+  POLL_NEW_EMAILS: 'poll-new-emails',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -100,6 +101,14 @@ export interface ThreadWorkflowJobData {
 }
 
 /**
+ * Data for polling Gmail for new emails (standalone mode)
+ * No data needed - job processes all active connections
+ */
+export interface PollNewEmailsJobData {
+  // Empty - processes all connections
+}
+
+/**
  * Union type of all job data types
  */
 export type JobData =
@@ -109,7 +118,8 @@ export type JobData =
   | SubscriptionRenewalJobData
   | ProcessScheduledEmailsJobData
   | CleanupWorkflowExecutionsJobData
-  | ThreadWorkflowJobData;
+  | ThreadWorkflowJobData
+  | PollNewEmailsJobData;
 
 /**
  * Job result types
@@ -136,6 +146,12 @@ export interface SendEmailResult {
 export interface SubscriptionRenewalResult {
   historyId: string;
   expiration: string;
+}
+
+export interface PollNewEmailsResult {
+  connectionsProcessed: number;
+  newThreadsFound: number;
+  errors?: string[];
 }
 
 /**
@@ -197,5 +213,11 @@ export const DEFAULT_JOB_OPTIONS: Record<JobName, JobOptions> = {
     backoff: { type: 'exponential', delay: 2000 },
     removeOnComplete: 500,
     removeOnFail: 100,
+  },
+  [JOB_NAMES.POLL_NEW_EMAILS]: {
+    attempts: 2,
+    backoff: { type: 'fixed', delay: 30000 },
+    removeOnComplete: 10,
+    removeOnFail: 10,
   },
 };

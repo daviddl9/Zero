@@ -11,6 +11,7 @@ import {
   type ProcessScheduledEmailsJobData,
   type CleanupWorkflowExecutionsJobData,
   type SubscriptionRenewalJobData,
+  type PollNewEmailsJobData,
 } from './jobs/types';
 
 export interface ScheduledJobConfig {
@@ -46,6 +47,11 @@ const DEFAULT_SCHEDULED_JOBS: ScheduledJobConfig[] = [
     data: {
       retentionDays: 30,
     } satisfies CleanupWorkflowExecutionsJobData,
+  },
+  {
+    name: JOB_NAMES.POLL_NEW_EMAILS,
+    pattern: '*/2 * * * *', // Every 2 minutes - poll Gmail for new emails (standalone mode)
+    data: {} satisfies PollNewEmailsJobData,
   },
 ];
 

@@ -37,6 +37,7 @@ import { createSendEmailProcessor } from './lib/job-queue/jobs/send-email.job';
 import { createScheduledEmailsProcessor } from './lib/job-queue/jobs/scheduled-emails.job';
 import { createSubscriptionRenewalProcessor } from './lib/job-queue/jobs/subscription-renewal.job';
 import { createCleanupWorkflowExecutionsProcessor } from './lib/job-queue/jobs/cleanup-workflow-executions.job';
+import { createPollNewEmailsProcessor } from './lib/job-queue/jobs/poll-new-emails.job';
 
 // Self-hosted infrastructure
 import {
@@ -660,6 +661,14 @@ function createJobDependencies(
       return result || null;
     },
 
+    // Get all active connections (for polling job)
+    getAllConnections: async () => {
+      const connections = await db.query.connection.findMany({
+        where: (c, { isNotNull }) => isNotNull(c.accessToken),
+      });
+      return connections;
+    },
+
     // Get driver from connection
     getDriver: (connection: typeof schema.connection.$inferSelect) => {
       if (!connection.accessToken || !connection.refreshToken) {
@@ -995,6 +1004,19 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
     JOB_NAMES.CLEANUP_WORKFLOW_EXECUTIONS,
     createCleanupWorkflowExecutionsProcessor({
       deleteOldExecutions: deps.deleteOldExecutions,
+    }),
+  );
+
+  // Poll new emails processor (standalone mode - no push notifications)
+  registerProcessor(
+    JOB_NAMES.POLL_NEW_EMAILS,
+    createPollNewEmailsProcessor({
+      getAllConnections: deps.getAllConnections,
+      getHistoryId: deps.getHistoryId,
+      setHistoryId: deps.setHistoryId,
+      getDriver: deps.getDriver as never,
+      syncThread: deps.syncThread,
+      evaluateTriggers: deps.evaluateTriggers,
     }),
   );
 
