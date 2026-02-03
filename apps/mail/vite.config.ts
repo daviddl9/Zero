@@ -12,11 +12,14 @@ const ReactCompilerConfig = {
   /* ... */
 };
 
+// Skip oxlint during production builds (NODE_ENV=production)
+// Linting is already done during development and CI
+const isDev = process.env.NODE_ENV !== 'production';
+
 export default defineConfig({
   plugins: [
-    oxlintPlugin({
-      includes: ['app/**/*.{ts,tsx,js,jsx}', 'components/**/*.{ts,tsx,js,jsx}'],
-    }),
+    // Only run oxlint in development to avoid scanning node_modules during builds
+    ...(isDev ? [oxlintPlugin()] : []),
     reactRouter(),
     cloudflare(),
     babel({
