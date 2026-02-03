@@ -3,7 +3,6 @@ name: Deploy to Raspberry Pi
 on:
   push:
     branches:
-      - staging
       - main
   workflow_dispatch: # Manual trigger
 
