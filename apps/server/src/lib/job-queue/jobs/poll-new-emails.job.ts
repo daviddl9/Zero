@@ -22,7 +22,10 @@ interface Connection {
 }
 
 interface MailDriver {
-  getProfile(): Promise<{ historyId?: string }>;
+  list(params: {
+    folder: string;
+    maxResults?: number;
+  }): Promise<{ threads: Array<{ id: string; historyId: string | null }>; nextPageToken: string | null }>;
   listHistory<T>(historyId: string): Promise<{ history: T[]; historyId: string }>;
 }
 
@@ -128,17 +131,19 @@ async function processConnection(
   const lastHistoryId = await deps.getHistoryId(connection.id);
 
   if (!lastHistoryId) {
-    // First run - just get current historyId and save it as baseline
+    // First run - get historyId from latest thread and save it as baseline
     console.log(`[PollNewEmailsJob] First poll for ${connection.email}, establishing baseline`);
 
     try {
-      const profile = await driver.getProfile();
-      if (profile.historyId) {
-        await deps.setHistoryId(connection.id, profile.historyId);
-        console.log(`[PollNewEmailsJob] Set baseline historyId ${profile.historyId} for ${connection.email}`);
+      // Get latest thread to extract historyId as baseline
+      const listResult = await driver.list({ folder: 'inbox', maxResults: 1 });
+      const latestThread = listResult.threads[0];
+      if (latestThread?.historyId) {
+        await deps.setHistoryId(connection.id, latestThread.historyId);
+        console.log(`[PollNewEmailsJob] Set baseline historyId ${latestThread.historyId} for ${connection.email}`);
       }
     } catch (error) {
-      console.warn(`[PollNewEmailsJob] Failed to get profile for ${connection.email}:`, error);
+      console.warn(`[PollNewEmailsJob] Failed to get baseline for ${connection.email}:`, error);
     }
 
     return 0;
@@ -159,12 +164,13 @@ async function processConnection(
       error,
     );
     try {
-      const profile = await driver.getProfile();
-      if (profile.historyId) {
-        await deps.setHistoryId(connection.id, profile.historyId);
+      const listResult = await driver.list({ folder: 'inbox', maxResults: 1 });
+      const latestThread = listResult.threads[0];
+      if (latestThread?.historyId) {
+        await deps.setHistoryId(connection.id, latestThread.historyId);
       }
-    } catch (profileError) {
-      console.error(`[PollNewEmailsJob] Failed to reset baseline for ${connection.email}:`, profileError);
+    } catch (listError) {
+      console.error(`[PollNewEmailsJob] Failed to reset baseline for ${connection.email}:`, listError);
     }
     return 0;
   }
