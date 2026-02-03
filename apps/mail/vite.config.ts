@@ -15,8 +15,7 @@ const ReactCompilerConfig = {
 export default defineConfig({
   plugins: [
     oxlintPlugin({
-      includes: ['**/*.{ts,tsx,js,jsx}'],
-      excludes: ['node_modules/**', 'dist/**', 'build/**'],
+      includes: ['app/**/*.{ts,tsx,js,jsx}', 'components/**/*.{ts,tsx,js,jsx}'],
     }),
     reactRouter(),
     cloudflare(),
