@@ -1,7 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useWorkflowExecutions, type WorkflowExecution } from '@/hooks/use-workflows';
+import {
+  useWorkflowExecutions,
+  useWorkflow,
+  type WorkflowExecution,
+  type WorkflowNode,
+} from '@/hooks/use-workflows';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages';
 import {
@@ -12,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
   Mail,
+  Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +27,16 @@ import {
 } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ExecutionHistoryProps {
   workflowId: string;
@@ -32,6 +48,7 @@ interface NodeResult {
   error?: string;
   outputIndex?: number;
   category?: string;
+  reasoning?: string;
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -49,6 +66,26 @@ function formatRelativeTime(dateString: string): string {
   if (diffDays < 7) return `${diffDays}d ago`;
 
   return date.toLocaleDateString();
+}
+
+function formatNodeType(nodeType: string): string {
+  return nodeType
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+    .replace(/^Ai /, 'AI ');
+}
+
+function getNodeDisplayName(nodeId: string, nodes: WorkflowNode[]): string {
+  const node = nodes.find((n) => n.id === nodeId);
+  if (node) {
+    return node.name || formatNodeType(node.nodeType);
+  }
+  // Fallback: parse prefix from ID
+  if (nodeId.startsWith('trigger-')) return 'Trigger';
+  if (nodeId.startsWith('condition-')) return 'Condition';
+  if (nodeId.startsWith('action-')) return 'Action';
+  return nodeId;
 }
 
 function getStatusIcon(status: WorkflowExecution['status']) {
@@ -94,13 +131,35 @@ function getStatusBadge(status: WorkflowExecution['status']) {
   );
 }
 
-function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
+function ExecutionItem({
+  execution,
+  nodes,
+}: {
+  execution: WorkflowExecution;
+  nodes: WorkflowNode[];
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerData = execution.triggerData as Record<string, unknown> | null;
   const nodeResults = execution.nodeResults as Record<string, NodeResult> | null;
 
-  const subject = triggerData?.subject as string | undefined;
-  const sender = triggerData?.sender as string | undefined;
+  // Handle both TriggerData (flat) and TriggerContext (nested) formats
+  const thread = triggerData?.thread as Record<string, unknown> | undefined;
+  const subject = (triggerData?.subject || thread?.subject) as string | undefined;
+  const senderObj = thread?.sender as { email?: string; name?: string } | undefined;
+  const sender = (triggerData?.sender || senderObj?.email || senderObj?.name) as string | undefined;
+  const snippet = (triggerData?.snippet || thread?.body) as string | undefined;
+  const event = triggerData?.event as string | undefined;
+
+  // Generate appropriate title
+  const getExecutionTitle = () => {
+    if (subject) return subject;
+    if (event === 'email_received') return 'Email Received';
+    if (event === 'email_labeled') return 'Label Changed';
+    if (event === 'schedule') return 'Scheduled Run';
+    return 'Manual execution';
+  };
+
+  const hasEmailPreview = subject || sender || snippet;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -116,18 +175,35 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
             {getStatusIcon(execution.status)}
             <div className="flex-1 min-w-0 text-left">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium truncate">
-                  {subject || 'Manual execution'}
-                </span>
+                <span className="text-sm font-medium truncate">{getExecutionTitle()}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                {sender && (
-                  <>
-                    <Mail className="h-3 w-3" />
-                    <span className="truncate">{sender}</span>
-                    <span>-</span>
-                  </>
-                )}
+                {hasEmailPreview ? (
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 hover:text-foreground cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Mail className="h-3 w-3" />
+                        <span className="truncate max-w-[150px]">{sender || 'Unknown sender'}</span>
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" align="start">
+                      <div className="space-y-2">
+                        <p className="font-medium text-sm line-clamp-2">{subject || 'No subject'}</p>
+                        {sender && <p className="text-xs text-muted-foreground">{sender}</p>}
+                        {snippet && (
+                          <p className="text-xs text-muted-foreground border-t pt-2 mt-2 line-clamp-3">
+                            {snippet}
+                          </p>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                ) : null}
+                {hasEmailPreview && <span>·</span>}
                 <span>{formatRelativeTime(execution.startedAt)}</span>
               </div>
             </div>
@@ -161,10 +237,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
               <span className="text-xs font-medium text-muted-foreground">Node Results:</span>
               <div className="space-y-1">
                 {Object.entries(nodeResults).map(([nodeId, result]) => (
-                  <div
-                    key={nodeId}
-                    className="flex items-center gap-2 text-xs"
-                  >
+                  <div key={nodeId} className="flex items-center gap-2 text-xs">
                     {result.executed ? (
                       result.passed ? (
                         <CheckCircle className="h-3 w-3 text-emerald-500" />
@@ -174,11 +247,23 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
                     ) : (
                       <Clock className="h-3 w-3 text-muted-foreground" />
                     )}
-                    <span className="truncate">{nodeId}</span>
+                    <span className="truncate">{getNodeDisplayName(nodeId, nodes)}</span>
                     {result.category && (
-                      <Badge variant="outline" className="text-[10px] px-1 py-0">
-                        {result.category}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                          {result.category}
+                        </Badge>
+                        {result.reasoning && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs">
+                              <p className="text-xs">{result.reasoning}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
                     )}
                     {result.error && (
                       <span className="text-red-500 truncate">{result.error}</span>
@@ -196,6 +281,9 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
 
 export function ExecutionHistory({ workflowId }: ExecutionHistoryProps) {
   const { data, isLoading, error } = useWorkflowExecutions(workflowId);
+  const { data: workflowData } = useWorkflow(workflowId);
+
+  const nodes = (workflowData as { nodes?: WorkflowNode[] } | undefined)?.nodes ?? [];
 
   if (isLoading) {
     return (
@@ -227,7 +315,7 @@ export function ExecutionHistory({ workflowId }: ExecutionHistoryProps) {
     <ScrollArea className="h-[300px]">
       <div className="space-y-1">
         {executions.map((execution) => (
-          <ExecutionItem key={execution.id} execution={execution} />
+          <ExecutionItem key={execution.id} execution={execution} nodes={nodes} />
         ))}
       </div>
     </ScrollArea>
