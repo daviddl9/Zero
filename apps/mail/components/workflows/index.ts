@@ -2,3 +2,4 @@ export { WorkflowNode, type WorkflowNodeData, type ExecutionStatus } from './wor
 export { NodePalette } from './node-palette';
 export { NodeConfigPanel } from './node-config-panel';
 export { TestWorkflowModal } from './test-workflow-modal';
+export { ExecutionHistory } from './execution-history';

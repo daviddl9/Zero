@@ -32,10 +32,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   WorkflowNode,
   type WorkflowNodeData,
   type ExecutionStatus,
   TestWorkflowModal,
+  ExecutionHistory,
 } from '@/components/workflows';
 import { NodePalette } from '@/components/workflows/node-palette';
 import { NodeConfigPanel } from '@/components/workflows/node-config-panel';
@@ -50,7 +56,7 @@ import {
 import { useLabels } from '@/hooks/use-labels';
 import { useSkills } from '@/hooks/use-skills';
 import { m } from '@/paraglide/messages';
-import { ArrowLeft, Save, Play } from 'lucide-react';
+import { ArrowLeft, Save, Play, History } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Define the React Flow node type with proper constraint
@@ -435,6 +441,27 @@ export default function WorkflowEditorPage() {
             <Button variant="ghost" size="sm" onClick={clearTestResults}>
               Clear Results
             </Button>
+          )}
+          {!isNew && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline">
+                  <History className="h-4 w-4 mr-2" />
+                  {m['pages.settings.workflows.history.title']?.() || 'History'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-96 p-0" align="end">
+                <div className="p-4 border-b">
+                  <h4 className="font-medium">
+                    {m['pages.settings.workflows.history.title']?.() || 'Execution History'}
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {m['pages.settings.workflows.history.description']?.() || 'Recent workflow executions (30-day retention)'}
+                  </p>
+                </div>
+                <ExecutionHistory workflowId={workflowId} />
+              </PopoverContent>
+            </Popover>
           )}
           <Button
             variant="outline"
