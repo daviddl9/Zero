@@ -17,7 +17,6 @@ import {
   ChevronDown,
   ChevronRight,
   Mail,
-  Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,6 +34,7 @@ import {
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
@@ -249,21 +249,18 @@ function ExecutionItem({
                     )}
                     <span className="truncate">{getNodeDisplayName(nodeId, nodes)}</span>
                     {result.category && (
-                      <div className="flex items-center gap-1">
-                        <Badge variant="outline" className="text-[10px] px-1 py-0">
-                          {result.category}
-                        </Badge>
-                        {result.reasoning && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-xs">
-                              <p className="text-xs">{result.reasoning}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 cursor-help">
+                              {result.category}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p className="text-xs">{result.reasoning || 'No reasoning available'}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                     {result.error && (
                       <span className="text-red-500 truncate">{result.error}</span>
