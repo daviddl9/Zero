@@ -1,6 +1,7 @@
 import { getZeroDB, getThread } from '../../lib/server-utils';
 import { privateProcedure, activeDriverProcedure, router } from '../trpc';
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import {
   WorkflowNodeSchema,
   WorkflowConnectionsSchema,
@@ -8,6 +9,12 @@ import {
 } from '../../lib/workflow-engine/types';
 import { testWorkflow, type NodeExecutionResult } from '../../lib/workflow-engine/executor';
 import type { TriggerContext, ThreadData } from '../../lib/workflow-engine/triggers';
+import {
+  generateWorkflowFromPrompt,
+  refineDraftWithFeedback,
+  analyzeWorkflowExecutions,
+  WorkflowDraftSchema,
+} from '../../lib/workflow-ai';
 import { env } from '../../env';
 
 const workflowsProcedure = privateProcedure.use(async ({ ctx, next }) => {
@@ -218,5 +225,70 @@ export const workflowsRouter = router({
       });
 
       return result;
+    }),
+
+  // Generate a workflow from a natural language prompt using AI
+  generateWorkflow: workflowsProcedure
+    .input(
+      z.object({
+        prompt: z.string().min(10).max(2000),
+        context: z
+          .object({
+            existingLabels: z.array(z.string()).optional(),
+            existingSkills: z
+              .array(
+                z.object({
+                  id: z.string(),
+                  name: z.string(),
+                }),
+              )
+              .optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await generateWorkflowFromPrompt(
+        input.prompt,
+        input.context,
+        ctx.sessionUser.id,
+        env,
+      );
+      return result;
+    }),
+
+  // Refine a workflow draft based on user feedback
+  refineDraft: workflowsProcedure
+    .input(
+      z.object({
+        currentDraft: WorkflowDraftSchema,
+        feedback: z.string().min(5).max(1000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return refineDraftWithFeedback(input.currentDraft, input.feedback, ctx.sessionUser.id, env);
+    }),
+
+  // Analyze workflow executions and suggest improvements using AI
+  analyzeExecutions: workflowsProcedure
+    .input(
+      z.object({
+        workflowId: z.string(),
+        limit: z.number().min(5).max(100).default(20),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const workflow = await ctx.db.getWorkflow(input.workflowId);
+
+      if (!workflow) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Workflow with ID ${input.workflowId} not found`,
+        });
+      }
+
+      const executions = await ctx.db.listWorkflowExecutions(input.workflowId, input.limit);
+
+      return analyzeWorkflowExecutions(workflow, executions, ctx.sessionUser.id, env);
     }),
 });
