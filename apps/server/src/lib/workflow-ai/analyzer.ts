@@ -351,8 +351,9 @@ export function buildAnalysisPrompt(
         ? execution.completedAt.getTime() - execution.startedAt.getTime()
         : null;
 
-    const failedNodes = execution.nodeResults
-      ?.filter((r) => r.status === 'failure')
+    const nodeResultsArray = Array.isArray(execution.nodeResults) ? execution.nodeResults : [];
+    const failedNodes = nodeResultsArray
+      .filter((r) => r.status === 'failure')
       .map((r) => ({
         nodeId: r.nodeId,
         error: r.error,
@@ -362,7 +363,7 @@ export function buildAnalysisPrompt(
       id: execution.id,
       status: execution.status,
       durationMs: duration,
-      failedNodes: failedNodes?.length ? failedNodes : undefined,
+      failedNodes: failedNodes.length > 0 ? failedNodes : undefined,
       hasError: !!execution.error,
     };
   });
