@@ -190,9 +190,13 @@ export function computeLabellingStats(
   let totalClassified = 0;
 
   for (const execution of executions) {
-    if (execution.status !== 'completed' || !execution.nodeResults) continue;
+    if (execution.status !== 'completed') continue;
 
-    for (const result of execution.nodeResults) {
+    // Ensure nodeResults is an array
+    const nodeResults = Array.isArray(execution.nodeResults) ? execution.nodeResults : [];
+    if (nodeResults.length === 0) continue;
+
+    for (const result of nodeResults) {
       // Check if this is an AI classification result
       const output = result.output as { category?: string; reasoning?: string } | undefined;
       if (output?.category) {
@@ -278,9 +282,13 @@ export function extractOtherCategoryEmails(
   const otherEmails: OtherCategoryEmail[] = [];
 
   for (const execution of executions) {
-    if (execution.status !== 'completed' || !execution.nodeResults) continue;
+    if (execution.status !== 'completed') continue;
 
-    for (const result of execution.nodeResults) {
+    // Ensure nodeResults is an array
+    const nodeResults = Array.isArray(execution.nodeResults) ? execution.nodeResults : [];
+    if (nodeResults.length === 0) continue;
+
+    for (const result of nodeResults) {
       const output = result.output as { category?: string } | undefined;
       if (output?.category === 'other') {
         otherEmails.push({
