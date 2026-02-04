@@ -64,12 +64,10 @@ interface LabellingStats {
 
 interface MissedLabelCandidate {
   threadId: string;
-  subject?: string;
-  sender?: string;
-  category: string;
+  subject: string;
+  sender: string;
   reasoning: string;
   suggestedLabel: string;
-  matchesPattern?: string;
   confidence: number;
 }
 
@@ -367,7 +365,7 @@ function LabellingInsightsSection({
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-medium truncate flex-1">
-                    {candidate.subject || '(no subject)'}
+                    {candidate.subject}
                   </p>
                   <Badge
                     variant="outline"
@@ -377,7 +375,7 @@ function LabellingInsightsSection({
                   </Badge>
                 </div>
                 <p className="text-muted-foreground truncate">
-                  From: {candidate.sender || '(unknown)'}
+                  From: {candidate.sender}
                 </p>
                 <p className="text-muted-foreground">{candidate.reasoning}</p>
               </div>

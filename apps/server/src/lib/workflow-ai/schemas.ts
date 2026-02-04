@@ -163,17 +163,16 @@ export type LabellingStats = z.infer<typeof LabellingStatsSchema>;
 // ============================================================================
 // Missed Label Candidate
 // Emails in "other" category that may have been mislabelled
+// Simplified schema for Gemini compatibility (no optional fields in nested arrays)
 // ============================================================================
 
 export const MissedLabelCandidateSchema = z.object({
   threadId: z.string(),
-  subject: z.string().optional(),
-  sender: z.string().optional(),
-  category: z.string(), // The "other" category it was placed in
-  reasoning: z.string(), // Why it might be mislabelled
-  suggestedLabel: z.string(), // What label the AI thinks it should have
-  matchesPattern: z.string().optional(), // Pattern it matches
-  confidence: z.number().min(0).max(1),
+  subject: z.string(),
+  sender: z.string(),
+  reasoning: z.string(),
+  suggestedLabel: z.string(),
+  confidence: z.number(),
 });
 
 export type MissedLabelCandidate = z.infer<typeof MissedLabelCandidateSchema>;
