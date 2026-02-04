@@ -42,6 +42,9 @@ import {
   type ExecutionStatus,
   TestWorkflowModal,
   ExecutionHistory,
+  WorkflowAISidebar,
+  type WorkflowDraft,
+  type WorkflowSuggestion,
 } from '@/components/workflows';
 import { NodePalette } from '@/components/workflows/node-palette';
 import { NodeConfigPanel } from '@/components/workflows/node-config-panel';
@@ -55,8 +58,9 @@ import {
 } from '@/hooks/use-workflows';
 import { useLabels } from '@/hooks/use-labels';
 import { useSkills } from '@/hooks/use-skills';
+import { useWorkflowAI } from '@/hooks/use-workflow-ai';
 import { m } from '@/paraglide/messages';
-import { ArrowLeft, Save, Play, History } from 'lucide-react';
+import { ArrowLeft, Save, Play, History, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Define the React Flow node type with proper constraint
@@ -88,11 +92,13 @@ export default function WorkflowEditorPage() {
   const { createWorkflow, updateWorkflow } = useWorkflowMutations();
   const { userLabels } = useLabels();
   const { data: skillsData } = useSkills();
+  const { isOpen: isAISidebarOpen, setOpen: setAISidebarOpen } = useWorkflowAI();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<WorkflowFlowNode | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
 
   // Workflow metadata
   const [workflowName, setWorkflowName] = useState('');
@@ -105,6 +111,19 @@ export default function WorkflowEditorPage() {
 
   const labels = useMemo(() => userLabels ?? [], [userLabels]);
   const skills = useMemo(() => skillsData?.skills ?? [], [skillsData]);
+
+  // Add highlighted property to nodes based on highlightedNodeIds
+  const nodesWithHighlight = useMemo(
+    () =>
+      nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          highlighted: highlightedNodeIds.includes(node.id),
+        },
+      })),
+    [nodes, highlightedNodeIds],
+  );
 
   // Load workflow data
   useEffect(() => {
@@ -410,6 +429,134 @@ export default function WorkflowEditorPage() {
     );
   }, [setNodes, setEdges]);
 
+  // Apply AI-generated workflow drafts to the canvas
+  const handleApplyDraft = useCallback(
+    (draft: WorkflowDraft) => {
+      // Convert draft nodes to React Flow nodes
+      const rfNodes: WorkflowFlowNode[] = draft.nodes.map((node) => ({
+        id: node.id,
+        type: 'workflowNode',
+        position: { x: node.position[0], y: node.position[1] },
+        data: {
+          label: node.name,
+          nodeType: node.nodeType,
+          type: node.type,
+          parameters: node.parameters,
+          disabled: node.disabled,
+        },
+      }));
+
+      // Convert draft connections to React Flow edges
+      const rfEdges: Edge[] = [];
+      Object.entries(draft.connections).forEach(([sourceId, conn]) => {
+        conn.main.forEach((outputs, outputIndex) => {
+          outputs.forEach((target, targetIdx) => {
+            rfEdges.push({
+              id: `${sourceId}-${target.node}-${outputIndex}-${targetIdx}`,
+              source: sourceId,
+              target: target.node,
+              sourceHandle: `output-${outputIndex}`,
+              targetHandle: undefined,
+              ...defaultEdgeOptions,
+            });
+          });
+        });
+      });
+
+      // Update the canvas
+      setNodes(rfNodes);
+      setEdges(rfEdges);
+
+      // Update workflow metadata
+      if (draft.name) {
+        setWorkflowName(draft.name);
+      }
+      if (draft.description) {
+        setWorkflowDescription(draft.description);
+      }
+
+      toast.success('Draft applied to canvas');
+    },
+    [setNodes, setEdges],
+  );
+
+  // Apply AI-generated suggestions (from execution analysis)
+  const handleApplySuggestion = useCallback(
+    (suggestion: WorkflowSuggestion) => {
+      // Check if suggestion has a proposed fix
+      if (!suggestion.proposedFix) {
+        toast.error('No fix available for this suggestion');
+        return;
+      }
+
+      const { addNodes, removeNodeIds, updateConnections } = suggestion.proposedFix;
+
+      // Start with current nodes and edges
+      let updatedNodes = [...nodes];
+      let updatedEdges = [...edges];
+
+      // Handle node removals
+      if (removeNodeIds && removeNodeIds.length > 0) {
+        // Filter out nodes to be removed
+        updatedNodes = updatedNodes.filter((node) => !removeNodeIds.includes(node.id));
+        // Filter out edges that reference removed nodes
+        updatedEdges = updatedEdges.filter(
+          (edge) => !removeNodeIds.includes(edge.source) && !removeNodeIds.includes(edge.target),
+        );
+      }
+
+      // Handle node additions
+      if (addNodes && addNodes.length > 0) {
+        // Convert to React Flow format
+        const newRfNodes: WorkflowFlowNode[] = addNodes.map((node) => ({
+          id: node.id,
+          type: 'workflowNode',
+          position: { x: node.position[0], y: node.position[1] },
+          data: {
+            label: node.name,
+            nodeType: node.nodeType,
+            type: node.type,
+            parameters: node.parameters,
+            disabled: node.disabled,
+          },
+        }));
+        updatedNodes = [...updatedNodes, ...newRfNodes];
+      }
+
+      // Handle connection updates
+      if (updateConnections) {
+        // Convert connections to edges
+        const newEdges: Edge[] = [];
+        Object.entries(updateConnections).forEach(([sourceId, conn]) => {
+          conn.main.forEach((outputs, outputIndex) => {
+            outputs.forEach((target, targetIdx) => {
+              newEdges.push({
+                id: `${sourceId}-${target.node}-${outputIndex}-${targetIdx}`,
+                source: sourceId,
+                target: target.node,
+                sourceHandle: `output-${outputIndex}`,
+                targetHandle: undefined,
+                ...defaultEdgeOptions,
+              });
+            });
+          });
+        });
+
+        // Merge with existing edges, removing duplicates by id
+        const existingEdgeIds = new Set(updatedEdges.map((e) => e.id));
+        const uniqueNewEdges = newEdges.filter((e) => !existingEdgeIds.has(e.id));
+        updatedEdges = [...updatedEdges, ...uniqueNewEdges];
+      }
+
+      // Apply updates
+      setNodes(updatedNodes);
+      setEdges(updatedEdges);
+
+      toast.success(`Applied fix: ${suggestion.title}`);
+    },
+    [nodes, edges, setNodes, setEdges],
+  );
+
   if (!isNew && isLoading) {
     return (
       <div className="flex h-[calc(100vh-200px)] items-center justify-center">
@@ -442,6 +589,10 @@ export default function WorkflowEditorPage() {
               Clear Results
             </Button>
           )}
+          <Button variant="outline" onClick={() => setAISidebarOpen(true)}>
+            <Sparkles className="h-4 w-4 mr-2" />
+            AI Assistant
+          </Button>
           {!isNew && (
             <Popover>
               <PopoverTrigger asChild>
@@ -486,7 +637,7 @@ export default function WorkflowEditorPage() {
         {/* Canvas */}
         <div className="flex-1">
           <ReactFlow
-            nodes={nodes}
+            nodes={nodesWithHighlight}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -503,8 +654,8 @@ export default function WorkflowEditorPage() {
           </ReactFlow>
         </div>
 
-        {/* Config Panel */}
-        {selectedNode && (
+        {/* Config Panel - hidden when AI sidebar is open */}
+        {selectedNode && !isAISidebarOpen && (
           <NodeConfigPanel
             node={selectedNode}
             onClose={() => setSelectedNode(null)}
@@ -515,6 +666,21 @@ export default function WorkflowEditorPage() {
             nodes={nodes}
             edges={edges}
             setEdges={setEdges}
+          />
+        )}
+
+        {/* AI Sidebar */}
+        {isAISidebarOpen && (
+          <WorkflowAISidebar
+            workflowId={isNew ? undefined : workflowId}
+            nodes={nodes}
+            edges={edges}
+            onApplyDraft={handleApplyDraft}
+            onApplySuggestion={handleApplySuggestion}
+            onHighlightNodes={setHighlightedNodeIds}
+            labels={labels.map((l) => ({ id: l.id || l.name, name: l.name }))}
+            skills={skills.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))}
+            onClose={() => setAISidebarOpen(false)}
           />
         )}
       </div>

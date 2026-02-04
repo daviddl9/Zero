@@ -140,3 +140,30 @@ export function useWorkflowMutations() {
     testWorkflow,
   };
 }
+
+/**
+ * Hook for generating a workflow from a natural language prompt using AI
+ */
+export function useGenerateWorkflow() {
+  const trpc = useTRPC();
+
+  return useMutation(trpc.workflows.generateWorkflow.mutationOptions());
+}
+
+/**
+ * Hook for analyzing workflow executions and getting AI-powered improvement suggestions
+ */
+export function useAnalyzeExecutions() {
+  const trpc = useTRPC();
+
+  return useMutation(trpc.workflows.analyzeExecutions.mutationOptions());
+}
+
+/**
+ * Hook for refining a workflow draft based on user feedback
+ */
+export function useRefineDraft() {
+  const trpc = useTRPC();
+
+  return useMutation(trpc.workflows.refineDraft.mutationOptions());
+}

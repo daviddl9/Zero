@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import {
   Mail,
@@ -32,6 +32,7 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   disabled?: boolean;
   executionStatus?: ExecutionStatus;
   matchedCategory?: string;
+  highlighted?: boolean;
 }
 
 const nodeTypeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -85,12 +86,12 @@ function getOutputPorts(data: WorkflowNodeData): string[] {
   return ['output']; // Single default output
 }
 
-function WorkflowNodeComponent({ data, selected }: NodeProps<WorkflowNodeData>) {
+function WorkflowNodeComponent({ data, selected }: { data: WorkflowNodeData; selected?: boolean }) {
   const Icon = nodeTypeIcons[data.nodeType] || Mail;
   const colors = nodeTypeColors[data.type] || nodeTypeColors.trigger;
   const outputPorts = getOutputPorts(data);
   const hasMultipleOutputs = outputPorts.length > 1;
-  const { executionStatus, matchedCategory } = data;
+  const { executionStatus, matchedCategory, highlighted } = data;
 
   // Execution status colors override default colors
   const getExecutionStyles = () => {
@@ -118,7 +119,8 @@ function WorkflowNodeComponent({ data, selected }: NodeProps<WorkflowNodeData>) 
         colors.bg,
         executionStatus ? executionStyles.border : colors.border,
         executionStatus && executionStyles.ring,
-        selected && !executionStatus && 'ring-2 ring-primary ring-offset-2',
+        selected && !executionStatus && !highlighted && 'ring-2 ring-primary ring-offset-2',
+        highlighted && 'ring-2 ring-blue-500 ring-offset-2 dark:ring-blue-400',
         data.disabled && 'opacity-50',
         executionStatus === 'skipped' && 'opacity-40',
       )}
