@@ -3,7 +3,7 @@
 // Generates email workflow drafts from natural language prompts using Gemini
 // ============================================================================
 
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import {
   GenerationResultSchema,
   type WorkflowDraft,
@@ -11,7 +11,7 @@ import {
   type WorkflowNode,
   type WorkflowConnections,
 } from './schemas';
-import { buildSystemPrompt, type UserContext } from './prompts';
+import { buildSystemPrompt, type UserContext, JSON_SCHEMA_INSTRUCTION } from './prompts';
 import { resolveAIClient, getSummarizationModel } from '../ai-client-resolver';
 import type { ZeroEnv } from '../../env';
 
@@ -69,22 +69,46 @@ export async function generateWorkflowFromPrompt(
         description: s.description,
       })) || [],
   };
-  const systemPrompt = buildSystemPrompt(userContext);
+  const systemPrompt = buildSystemPrompt(userContext) + JSON_SCHEMA_INSTRUCTION;
 
-  // Generate the workflow using the AI model
-  const { object } = await generateObject({
+  // Generate the workflow using the AI model with generateText
+  // We use generateText instead of generateObject to avoid Gemini schema compatibility issues
+  const { text } = await generateText({
     model,
-    schema: GenerationResultSchema,
     system: systemPrompt,
     prompt: sanitizeUserInput(prompt),
     temperature: 0.7,
   });
 
+  // Parse the JSON response
+  const parsed = parseJSONResponse(text);
+  const validated = GenerationResultSchema.parse(parsed);
+
   // Apply auto-layout to position nodes cleanly
   return {
-    ...object,
-    draft: applyAutoLayout(object.draft),
+    ...validated,
+    draft: applyAutoLayout(validated.draft),
   };
+}
+
+/**
+ * Parses JSON from the AI response, handling potential markdown code blocks.
+ */
+function parseJSONResponse(text: string): unknown {
+  // Try to extract JSON from markdown code blocks if present
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim();
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Try to find JSON object in the response
+    const objectMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      return JSON.parse(objectMatch[0]);
+    }
+    throw new Error(`Failed to parse AI response as JSON: ${(e as Error).message}`);
+  }
 }
 
 // ============================================================================
@@ -141,21 +165,25 @@ ${JSON.stringify(existingDraft, null, 2)}
 - Keep node IDs stable where possible (don't rename nodes that aren't being changed)
 - Preserve working connections
 - Only modify what the user's feedback specifically addresses
-- If feedback is unclear, list your assumptions`;
+- If feedback is unclear, list your assumptions
+${JSON_SCHEMA_INSTRUCTION}`;
 
-  // Generate the refined workflow
-  const { object } = await generateObject({
+  // Generate the refined workflow using generateText
+  const { text } = await generateText({
     model,
-    schema: GenerationResultSchema,
     system: refinementSystemPrompt,
     prompt: sanitizeUserInput(feedback),
     temperature: 0.7,
   });
 
+  // Parse the JSON response
+  const parsed = parseJSONResponse(text);
+  const validated = GenerationResultSchema.parse(parsed);
+
   // Apply auto-layout to the refined draft
   return {
-    ...object,
-    draft: applyAutoLayout(object.draft),
+    ...validated,
+    draft: applyAutoLayout(validated.draft),
   };
 }
 

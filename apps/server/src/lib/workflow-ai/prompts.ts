@@ -210,6 +210,44 @@ Return:
 - **Low**: Style suggestions, minor improvements`;
 
 // ============================================================================
+// JSON Schema Instruction for generateText
+// ============================================================================
+
+export const JSON_SCHEMA_INSTRUCTION = `
+
+## Response Format
+
+You MUST respond with ONLY valid JSON (no markdown, no code blocks, no explanation outside the JSON).
+The JSON must follow this exact structure:
+
+{
+  "draft": {
+    "name": "string - workflow name",
+    "description": "string - optional description",
+    "nodes": [
+      {
+        "id": "string - unique ID like trigger_1, condition_1, action_1",
+        "type": "trigger | condition | action",
+        "nodeType": "string - specific type from the available types",
+        "name": "string - human-readable name",
+        "position": [number, number],
+        "parameters": { ... node-specific parameters }
+      }
+    ],
+    "connections": {
+      "source_node_id": {
+        "main": [
+          [{ "node": "target_node_id", "index": 0 }]
+        ]
+      }
+    }
+  },
+  "explanation": "string - explain what the workflow does",
+  "assumptions": ["string - list assumptions made"],
+  "questions": ["string - optional clarifying questions"]
+}`;
+
+// ============================================================================
 // User Context Interface
 // ============================================================================
 
