@@ -9,6 +9,9 @@ import {
   type AnalysisResult,
   type ExecutionStats,
   type WorkflowSuggestion,
+  type LabellingStats,
+  type CategoryDistribution,
+  type LabelApplied,
 } from './schemas';
 import { ANALYSIS_SYSTEM_PROMPT } from './prompts';
 import { resolveAIClient, getSummarizationModel } from '../ai-client-resolver';
@@ -125,6 +128,176 @@ export function computeExecutionStats(executions: WorkflowExecution[]): Executio
 }
 
 // ============================================================================
+// Labelling Statistics
+// ============================================================================
+
+/**
+ * Represents an email that was classified into the "other" category
+ */
+interface OtherCategoryEmail {
+  threadId: string;
+  subject?: string;
+  sender?: string;
+  category: string;
+}
+
+/**
+ * Checks if a workflow has AI classification nodes.
+ */
+function hasAIClassification(workflow: Workflow): boolean {
+  return workflow.nodes.some((node) => node.nodeType === 'ai_classification');
+}
+
+/**
+ * Gets the AI classification categories from a workflow.
+ */
+function getAIClassificationCategories(workflow: Workflow): string[] {
+  const aiNode = workflow.nodes.find((node) => node.nodeType === 'ai_classification');
+  if (!aiNode || !aiNode.parameters) return [];
+
+  const categories = aiNode.parameters.categories;
+  if (Array.isArray(categories)) {
+    return categories.filter((c): c is string => typeof c === 'string');
+  }
+  return [];
+}
+
+/**
+ * Computes labelling statistics from workflow execution history.
+ * Only applicable to workflows with AI classification nodes.
+ *
+ * @param executions - Array of workflow executions to analyze
+ * @param workflow - The workflow definition
+ * @returns Labelling statistics or null if not applicable
+ */
+export function computeLabellingStats(
+  executions: WorkflowExecution[],
+  workflow: Workflow,
+): LabellingStats | null {
+  // Only compute for workflows with AI classification
+  if (!hasAIClassification(workflow)) {
+    return null;
+  }
+
+  const categories = getAIClassificationCategories(workflow);
+  if (categories.length === 0) {
+    return null;
+  }
+
+  // Count classifications by category
+  const categoryCounts = new Map<string, number>();
+  const labelCounts = new Map<string, number>();
+  let totalClassified = 0;
+
+  for (const execution of executions) {
+    if (execution.status !== 'completed' || !execution.nodeResults) continue;
+
+    for (const result of execution.nodeResults) {
+      // Check if this is an AI classification result
+      const output = result.output as { category?: string; reasoning?: string } | undefined;
+      if (output?.category) {
+        totalClassified++;
+        const count = categoryCounts.get(output.category) || 0;
+        categoryCounts.set(output.category, count + 1);
+      }
+
+      // Check if this is an add_label action
+      const node = workflow.nodes.find((n) => n.id === result.nodeId);
+      if (node?.nodeType === 'add_label' && result.status === 'success') {
+        const label = (node.parameters as { label?: string })?.label;
+        if (label) {
+          const count = labelCounts.get(label) || 0;
+          labelCounts.set(label, count + 1);
+        }
+      }
+    }
+  }
+
+  if (totalClassified === 0) {
+    return null;
+  }
+
+  // Build category distribution
+  const categoryDistribution: CategoryDistribution[] = [];
+  for (const category of categories) {
+    const count = categoryCounts.get(category) || 0;
+    categoryDistribution.push({
+      category,
+      count,
+      percentage: totalClassified > 0 ? (count / totalClassified) * 100 : 0,
+    });
+  }
+
+  // Add "other" category
+  const otherCount = categoryCounts.get('other') || 0;
+  categoryDistribution.push({
+    category: 'other',
+    count: otherCount,
+    percentage: totalClassified > 0 ? (otherCount / totalClassified) * 100 : 0,
+  });
+
+  // Build labels applied
+  const labelsApplied: LabelApplied[] = [];
+  for (const [label, count] of labelCounts) {
+    labelsApplied.push({
+      label,
+      count,
+      percentage: totalClassified > 0 ? (count / totalClassified) * 100 : 0,
+    });
+  }
+
+  // Sort by count descending
+  categoryDistribution.sort((a, b) => b.count - a.count);
+  labelsApplied.sort((a, b) => b.count - a.count);
+
+  return {
+    totalClassified,
+    categoryDistribution,
+    labelsApplied,
+    otherCategoryCount: otherCount,
+    otherCategoryPercentage: totalClassified > 0 ? (otherCount / totalClassified) * 100 : 0,
+  };
+}
+
+/**
+ * Extracts emails that were classified into the "other" category.
+ * These are candidates for missed labels.
+ *
+ * @param executions - Array of workflow executions to analyze
+ * @param workflow - The workflow definition
+ * @returns Array of emails in the "other" category with metadata
+ */
+export function extractOtherCategoryEmails(
+  executions: WorkflowExecution[],
+  workflow: Workflow,
+): OtherCategoryEmail[] {
+  if (!hasAIClassification(workflow)) {
+    return [];
+  }
+
+  const otherEmails: OtherCategoryEmail[] = [];
+
+  for (const execution of executions) {
+    if (execution.status !== 'completed' || !execution.nodeResults) continue;
+
+    for (const result of execution.nodeResults) {
+      const output = result.output as { category?: string } | undefined;
+      if (output?.category === 'other') {
+        otherEmails.push({
+          threadId: execution.threadId || execution.id,
+          subject: execution.triggerData?.subject || undefined,
+          sender: execution.triggerData?.sender || undefined,
+          category: 'other',
+        });
+        break; // Only add once per execution
+      }
+    }
+  }
+
+  return otherEmails;
+}
+
+// ============================================================================
 // Analysis Prompt Builder
 // ============================================================================
 
@@ -135,12 +308,16 @@ export function computeExecutionStats(executions: WorkflowExecution[]): Executio
  * @param workflow - The workflow to analyze
  * @param executions - Execution history for the workflow
  * @param stats - Pre-computed execution statistics
+ * @param labellingStats - Optional labelling statistics for AI classification workflows
+ * @param otherCategoryEmails - Optional list of emails in "other" category
  * @returns Formatted prompt string for AI analysis
  */
 export function buildAnalysisPrompt(
   workflow: Workflow,
   executions: WorkflowExecution[],
   stats: ExecutionStats,
+  labellingStats?: LabellingStats | null,
+  otherCategoryEmails?: OtherCategoryEmail[],
 ): string {
   // Format workflow definition
   const workflowDefinition = {
@@ -182,6 +359,49 @@ export function buildAnalysisPrompt(
     };
   });
 
+  // Build labelling context section if applicable
+  let labellingSection = '';
+  if (labellingStats) {
+    const categoryLines = labellingStats.categoryDistribution
+      .map((c) => `  - ${c.category}: ${c.count} (${c.percentage.toFixed(1)}%)`)
+      .join('\n');
+
+    const labelLines =
+      labellingStats.labelsApplied.length > 0
+        ? labellingStats.labelsApplied
+            .map((l) => `  - ${l.label}: ${l.count} (${l.percentage.toFixed(1)}%)`)
+            .join('\n')
+        : '  (No labels applied)';
+
+    labellingSection = `
+
+### Labelling Statistics
+- Total Classified: ${labellingStats.totalClassified}
+- Other Category Rate: ${labellingStats.otherCategoryPercentage.toFixed(1)}%
+
+#### Category Distribution
+${categoryLines}
+
+#### Labels Applied
+${labelLines}`;
+
+    // Add sample "other" category emails if available
+    if (otherCategoryEmails && otherCategoryEmails.length > 0) {
+      const sampleEmails = otherCategoryEmails.slice(0, 10); // Limit to 10 samples
+      const emailLines = sampleEmails
+        .map(
+          (e) =>
+            `  - Subject: "${e.subject || '(no subject)'}" | From: ${e.sender || '(unknown)'}`,
+        )
+        .join('\n');
+
+      labellingSection += `
+
+#### Sample Emails in "Other" Category (${otherCategoryEmails.length} total)
+${emailLines}`;
+    }
+  }
+
   // Build the analysis prompt
   const prompt = `## Workflow to Analyze
 
@@ -194,7 +414,7 @@ ${JSON.stringify(workflowDefinition, null, 2)}
 - Total Executions: ${stats.totalExecutions}
 - Success Rate: ${(stats.successRate * 100).toFixed(1)}%
 - Average Duration: ${stats.averageDuration ? `${stats.averageDuration.toFixed(0)}ms` : 'N/A'}
-- Common Failure Nodes: ${stats.commonFailureNodes.length > 0 ? stats.commonFailureNodes.join(', ') : 'None'}
+- Common Failure Nodes: ${stats.commonFailureNodes.length > 0 ? stats.commonFailureNodes.join(', ') : 'None'}${labellingSection}
 
 ### Recent Execution History (${recentExecutions.length} executions)
 \`\`\`json
@@ -211,6 +431,8 @@ Analyze this workflow and its execution history. Identify:
 2. Missing error handling (actions without fallbacks)
 3. Optimization opportunities (redundant checks, inefficient ordering)
 4. AI classification tuning (if applicable)
+${labellingStats ? `5. Labelling patterns and potential missed labels
+6. Opportunities to expand labelling criteria` : ''}
 
 Provide actionable suggestions with concrete fixes where possible.`;
 
@@ -249,12 +471,22 @@ export async function analyzeWorkflowExecutions(
     };
   }
 
+  // Compute labelling statistics for AI classification workflows
+  const labellingStats = computeLabellingStats(executions, workflow);
+  const otherCategoryEmails = extractOtherCategoryEmails(executions, workflow);
+
   // Resolve the AI client based on user settings
   const aiConfig = await resolveAIClient(userId, env);
   const model = getSummarizationModel(aiConfig);
 
-  // Build the analysis prompt
-  const userPrompt = buildAnalysisPrompt(workflow, executions, stats);
+  // Build the analysis prompt with labelling context
+  const userPrompt = buildAnalysisPrompt(
+    workflow,
+    executions,
+    stats,
+    labellingStats,
+    otherCategoryEmails,
+  );
 
   // Generate analysis using AI
   const { object } = await generateObject({
@@ -271,6 +503,9 @@ export async function analyzeWorkflowExecutions(
     ...object,
     executionStats: stats,
     analyzedExecutionIds: executions.slice(0, 50).map((e) => e.id),
+    // Include labelling data if available
+    labellingStats: labellingStats ?? undefined,
+    missedLabelCandidates: object.missedLabelCandidates,
   };
 }
 

@@ -12,6 +12,8 @@ import {
   Brain,
   Filter,
   ArrowUpDown,
+  Tag,
+  Expand,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -26,7 +28,10 @@ type SuggestionType =
   | 'redundancy'
   | 'ai_classification_tuning'
   | 'missing_condition'
-  | 'action_sequencing';
+  | 'action_sequencing'
+  | 'labelling_pattern'
+  | 'missed_labels'
+  | 'expand_criteria';
 
 type Priority = 'low' | 'medium' | 'high';
 
@@ -78,6 +83,9 @@ const typeIcons: Record<SuggestionType, LucideIcon> = {
   ai_classification_tuning: Brain,
   missing_condition: Filter,
   action_sequencing: ArrowUpDown,
+  labelling_pattern: Tag,
+  missed_labels: AlertTriangle,
+  expand_criteria: Expand,
 };
 
 const typeLabels: Record<SuggestionType, string> = {
@@ -88,6 +96,9 @@ const typeLabels: Record<SuggestionType, string> = {
   ai_classification_tuning: 'AI Tuning',
   missing_condition: 'Missing Condition',
   action_sequencing: 'Sequencing',
+  labelling_pattern: 'Pattern',
+  missed_labels: 'Missed Labels',
+  expand_criteria: 'Expand Scope',
 };
 
 const priorityColors: Record<Priority, string> = {
@@ -104,6 +115,9 @@ const typeColors: Record<SuggestionType, string> = {
   ai_classification_tuning: 'text-pink-600 dark:text-pink-400',
   missing_condition: 'text-teal-600 dark:text-teal-400',
   action_sequencing: 'text-indigo-600 dark:text-indigo-400',
+  labelling_pattern: 'text-emerald-600 dark:text-emerald-400',
+  missed_labels: 'text-orange-600 dark:text-orange-400',
+  expand_criteria: 'text-cyan-600 dark:text-cyan-400',
 };
 
 // ============================================================================

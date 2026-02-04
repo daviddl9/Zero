@@ -84,6 +84,10 @@ export const SuggestionTypeSchema = z.enum([
   'ai_classification_tuning',
   'missing_condition',
   'action_sequencing',
+  // New labelling insight types
+  'labelling_pattern', // Detected patterns in labelled emails
+  'missed_labels', // Emails that should have been labelled
+  'expand_criteria', // Suggestions to expand labelling scope
 ]);
 
 export type SuggestionType = z.infer<typeof SuggestionTypeSchema>;
@@ -126,6 +130,55 @@ export const ExecutionStatsSchema = z.object({
 export type ExecutionStats = z.infer<typeof ExecutionStatsSchema>;
 
 // ============================================================================
+// Labelling Stats
+// Statistics about how emails are being categorized/labelled
+// ============================================================================
+
+export const CategoryDistributionSchema = z.object({
+  category: z.string(),
+  count: z.number(),
+  percentage: z.number(),
+});
+
+export type CategoryDistribution = z.infer<typeof CategoryDistributionSchema>;
+
+export const LabelAppliedSchema = z.object({
+  label: z.string(),
+  count: z.number(),
+  percentage: z.number(),
+});
+
+export type LabelApplied = z.infer<typeof LabelAppliedSchema>;
+
+export const LabellingStatsSchema = z.object({
+  totalClassified: z.number(),
+  categoryDistribution: z.array(CategoryDistributionSchema),
+  labelsApplied: z.array(LabelAppliedSchema),
+  otherCategoryCount: z.number(),
+  otherCategoryPercentage: z.number(),
+});
+
+export type LabellingStats = z.infer<typeof LabellingStatsSchema>;
+
+// ============================================================================
+// Missed Label Candidate
+// Emails in "other" category that may have been mislabelled
+// ============================================================================
+
+export const MissedLabelCandidateSchema = z.object({
+  threadId: z.string(),
+  subject: z.string().optional(),
+  sender: z.string().optional(),
+  category: z.string(), // The "other" category it was placed in
+  reasoning: z.string(), // Why it might be mislabelled
+  suggestedLabel: z.string(), // What label the AI thinks it should have
+  matchesPattern: z.string().optional(), // Pattern it matches
+  confidence: z.number().min(0).max(1),
+});
+
+export type MissedLabelCandidate = z.infer<typeof MissedLabelCandidateSchema>;
+
+// ============================================================================
 // Analysis Result
 // Complete response from AI workflow analysis
 // ============================================================================
@@ -134,6 +187,9 @@ export const AnalysisResultSchema = z.object({
   suggestions: z.array(WorkflowSuggestionSchema),
   executionStats: ExecutionStatsSchema,
   analyzedExecutionIds: z.array(z.string()),
+  // New labelling insights fields
+  labellingStats: LabellingStatsSchema.optional(),
+  missedLabelCandidates: z.array(MissedLabelCandidateSchema).optional(),
 });
 
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;

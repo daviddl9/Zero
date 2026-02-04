@@ -146,6 +146,7 @@ Given a workflow definition and its execution history, identify:
 3. Optimization opportunities
 4. Missing error handling
 5. Redundant or inefficient logic
+6. Labelling patterns and missed labels (for AI classification workflows)
 
 ## Suggestion Categories
 
@@ -158,6 +159,9 @@ Given a workflow definition and its execution history, identify:
 | ai_classification_tuning | Better AI categories | Categories overlap, too broad, or missing |
 | missing_condition | Add filters | Too many emails processed, could be filtered earlier |
 | action_sequencing | Reorder actions | Order causes issues or is suboptimal |
+| labelling_pattern | Detected patterns in labelled emails | Common sender domains, subject patterns, or keywords in successfully labelled emails |
+| missed_labels | Emails that should have been labelled | Emails in "other" category that match patterns of labelled emails |
+| expand_criteria | Suggestions to expand labelling scope | User intent suggests broader criteria would be beneficial |
 
 ## Analysis Criteria
 
@@ -181,6 +185,27 @@ Given a workflow definition and its execution history, identify:
 - Too many categories (cognitive overload, slower classification)
 - Missing important category that shows up in "other" frequently
 
+### Labelling Pattern Detection
+When analyzing workflows with AI classification, look for:
+- **Sender domain patterns**: Common domains in successfully labelled emails (e.g., @github.com, @linkedin.com)
+- **Subject line patterns**: Keywords or phrases that appear frequently (e.g., "Invoice", "RE:", "[JIRA]")
+- **Content patterns**: Common keywords in email bodies that correlate with specific labels
+- **Time patterns**: Emails arriving at certain times that tend to get specific labels
+
+### Missed Label Detection
+Review emails in the "other" category and identify those that:
+- Have sender domains similar to labelled emails
+- Contain subject patterns matching existing categories
+- Should logically belong to an existing category based on content
+- Represent a new category that should be added
+
+### User Intent Inference
+Based on execution patterns, suggest expanding criteria when:
+- A category has very few matches but seems important
+- "Other" category is too large (>30% indicates missing categories)
+- Similar emails are being split across different categories
+- New patterns emerge that weren't in the original classification
+
 ## Execution Stats to Calculate
 
 - \`totalExecutions\`: Number of workflow runs analyzed
@@ -203,11 +228,21 @@ Return:
 - \`executionStats\`: Calculated statistics
 - \`analyzedExecutionIds\`: Which executions you analyzed
 
+- \`missedLabelCandidates\`: (Optional) Array of emails that may have been mislabelled:
+  - \`threadId\`: The thread ID
+  - \`subject\`: Email subject
+  - \`sender\`: Sender address
+  - \`category\`: Current category (usually "other")
+  - \`reasoning\`: Why this email might be mislabelled
+  - \`suggestedLabel\`: What label it should have
+  - \`matchesPattern\`: Pattern it matches (optional)
+  - \`confidence\`: How confident the suggestion is (0-1)
+
 ## Priority Guidelines
 
-- **High**: Frequent failures, significant performance impact, security concerns
-- **Medium**: Optimization opportunities, minor inefficiencies
-- **Low**: Style suggestions, minor improvements`;
+- **High**: Frequent failures, significant performance impact, security concerns, >30% "other" rate
+- **Medium**: Optimization opportunities, minor inefficiencies, 15-30% "other" rate
+- **Low**: Style suggestions, minor improvements, pattern observations`;
 
 // ============================================================================
 // JSON Schema Instruction for generateText

@@ -19,6 +19,8 @@ import {
   Clock,
   TrendingUp,
   AlertTriangle,
+  Tag,
+  PieChart,
 } from 'lucide-react';
 import { SuggestionCard } from './suggestion-card';
 
@@ -33,9 +35,43 @@ type SuggestionType =
   | 'redundancy'
   | 'ai_classification_tuning'
   | 'missing_condition'
-  | 'action_sequencing';
+  | 'action_sequencing'
+  | 'labelling_pattern'
+  | 'missed_labels'
+  | 'expand_criteria';
 
 type Priority = 'low' | 'medium' | 'high';
+
+interface CategoryDistribution {
+  category: string;
+  count: number;
+  percentage: number;
+}
+
+interface LabelApplied {
+  label: string;
+  count: number;
+  percentage: number;
+}
+
+interface LabellingStats {
+  totalClassified: number;
+  categoryDistribution: CategoryDistribution[];
+  labelsApplied: LabelApplied[];
+  otherCategoryCount: number;
+  otherCategoryPercentage: number;
+}
+
+interface MissedLabelCandidate {
+  threadId: string;
+  subject?: string;
+  sender?: string;
+  category: string;
+  reasoning: string;
+  suggestedLabel: string;
+  matchesPattern?: string;
+  confidence: number;
+}
 
 interface ProposedFix {
   addNodes?: Array<{
@@ -77,6 +113,8 @@ interface AnalysisResult {
   suggestions: WorkflowSuggestion[];
   executionStats: ExecutionStats;
   analyzedExecutionIds: string[];
+  labellingStats?: LabellingStats;
+  missedLabelCandidates?: MissedLabelCandidate[];
 }
 
 export interface ExecutionAnalysisProps {
@@ -208,6 +246,155 @@ function StatsCard({ stats, isLoading }: StatsCardProps) {
 }
 
 // ============================================================================
+// Labelling Insights Section Component
+// ============================================================================
+
+interface LabellingInsightsSectionProps {
+  labellingStats: LabellingStats;
+  missedLabelCandidates?: MissedLabelCandidate[];
+}
+
+function LabellingInsightsSection({
+  labellingStats,
+  missedLabelCandidates,
+}: LabellingInsightsSectionProps) {
+  const highOtherRate = labellingStats.otherCategoryPercentage > 30;
+  const maxCategoryCount = Math.max(...labellingStats.categoryDistribution.map((c) => c.count), 1);
+
+  return (
+    <div className="space-y-4">
+      {/* Section Header */}
+      <div className="flex items-center gap-2">
+        <div className="rounded-md bg-emerald-100 p-1.5 dark:bg-emerald-900/30">
+          <PieChart className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <h4 className="text-sm font-medium">Labelling Insights</h4>
+        <Badge variant="secondary" className="text-xs">
+          {labellingStats.totalClassified} classified
+        </Badge>
+      </div>
+
+      {/* High Other Rate Warning */}
+      {highOtherRate && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800 dark:text-amber-300">
+                High "other" category rate
+              </p>
+              <p className="text-amber-700 dark:text-amber-400 mt-1">
+                {labellingStats.otherCategoryPercentage.toFixed(0)}% of emails are going to "other".
+                Consider adding more categories or expanding criteria.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Distribution */}
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground font-medium">Category Distribution</p>
+        <div className="space-y-2">
+          {labellingStats.categoryDistribution.map((cat) => {
+            const isOther = cat.category === 'other';
+            const barWidth = (cat.count / maxCategoryCount) * 100;
+
+            return (
+              <div key={cat.category} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span
+                    className={cn(
+                      'font-medium',
+                      isOther && highOtherRate && 'text-amber-600 dark:text-amber-400',
+                    )}
+                  >
+                    {cat.category}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {cat.count} ({cat.percentage.toFixed(0)}%)
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      isOther
+                        ? highOtherRate
+                          ? 'bg-amber-500'
+                          : 'bg-gray-400'
+                        : 'bg-emerald-500',
+                    )}
+                    style={{ width: `${barWidth}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Labels Applied Summary */}
+      {labellingStats.labelsApplied.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground font-medium">Labels Applied</p>
+          <div className="flex flex-wrap gap-1.5">
+            {labellingStats.labelsApplied.map((label) => (
+              <Badge
+                key={label.label}
+                variant="outline"
+                className="text-xs py-0.5 h-6 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800"
+              >
+                <Tag className="h-3 w-3 mr-1" />
+                {label.label}: {label.count}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Missed Label Candidates */}
+      {missedLabelCandidates && missedLabelCandidates.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground font-medium">
+            Potential Missed Labels ({missedLabelCandidates.length})
+          </p>
+          <div className="space-y-2 max-h-[150px] overflow-y-auto">
+            {missedLabelCandidates.slice(0, 5).map((candidate, index) => (
+              <div
+                key={`${candidate.threadId}-${index}`}
+                className="rounded-lg border p-2.5 text-xs space-y-1 bg-orange-50/50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium truncate flex-1">
+                    {candidate.subject || '(no subject)'}
+                  </p>
+                  <Badge
+                    variant="outline"
+                    className="text-xs py-0 h-5 shrink-0 bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700"
+                  >
+                    → {candidate.suggestedLabel}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground truncate">
+                  From: {candidate.sender || '(unknown)'}
+                </p>
+                <p className="text-muted-foreground">{candidate.reasoning}</p>
+              </div>
+            ))}
+          </div>
+          {missedLabelCandidates.length > 5 && (
+            <p className="text-xs text-muted-foreground text-center">
+              +{missedLabelCandidates.length - 5} more candidates
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // ExecutionAnalysis Component
 // ============================================================================
 
@@ -314,6 +501,14 @@ export function ExecutionAnalysis({
       <CardContent className="space-y-4">
         {/* Stats Display */}
         <StatsCard stats={displayStats} isLoading={isLoadingExecutions} />
+
+        {/* Labelling Insights Section */}
+        {cachedAnalysis?.labellingStats && (
+          <LabellingInsightsSection
+            labellingStats={cachedAnalysis.labellingStats}
+            missedLabelCandidates={cachedAnalysis.missedLabelCandidates}
+          />
+        )}
 
         {/* Insufficient Data Message */}
         {!isLoadingExecutions && !hasEnoughExecutions && (
