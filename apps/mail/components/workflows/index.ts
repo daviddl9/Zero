@@ -8,3 +8,4 @@ export { WorkflowChat, type WorkflowChatProps } from './workflow-chat';
 export { ExecutionAnalysis, type ExecutionAnalysisProps, type WorkflowSuggestion } from './execution-analysis';
 export { SuggestionCard, type SuggestionCardProps } from './suggestion-card';
 export { DraftPreview, type DraftPreviewProps } from './draft-preview';
+export { DiffPreviewBar, type DiffPreviewBarProps } from './diff-preview-bar';

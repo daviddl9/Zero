@@ -45,7 +45,14 @@ import {
   WorkflowAISidebar,
   type WorkflowDraft,
   type WorkflowSuggestion,
+  DiffPreviewBar,
 } from '@/components/workflows';
+import {
+  computeWorkflowDiff,
+  type WorkflowDiff,
+  type WorkflowDraftNode,
+  type WorkflowDraftConnections,
+} from '@/lib/workflow-diff';
 import { NodePalette } from '@/components/workflows/node-palette';
 import { NodeConfigPanel } from '@/components/workflows/node-config-panel';
 import {
@@ -108,6 +115,15 @@ export default function WorkflowEditorPage() {
   // Test workflow state
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [testResults, setTestResults] = useState<TestWorkflowResult | null>(null);
+
+  // Diff preview state
+  const [previewState, setPreviewState] = useState<{
+    isActive: boolean;
+    draft: WorkflowDraft;
+    diff: WorkflowDiff;
+    mergedNodes: WorkflowFlowNode[];
+    mergedEdges: Edge[];
+  } | null>(null);
 
   const labels = useMemo(() => userLabels ?? [], [userLabels]);
   const skills = useMemo(() => skillsData?.skills ?? [], [skillsData]);
@@ -429,56 +445,217 @@ export default function WorkflowEditorPage() {
     );
   }, [setNodes, setEdges]);
 
-  // Apply AI-generated workflow drafts to the canvas
-  const handleApplyDraft = useCallback(
-    (draft: WorkflowDraft) => {
-      // Convert draft nodes to React Flow nodes
-      const rfNodes: WorkflowFlowNode[] = draft.nodes.map((node) => ({
-        id: node.id,
-        type: 'workflowNode',
-        position: { x: node.position[0], y: node.position[1] },
-        data: {
-          label: node.name,
-          nodeType: node.nodeType,
-          type: node.type,
-          parameters: node.parameters,
-          disabled: node.disabled,
-        },
-      }));
+  // Build merged nodes with diff status for preview
+  const buildMergedNodesWithDiff = useCallback(
+    (
+      currentNodes: WorkflowFlowNode[],
+      draftNodes: WorkflowDraftNode[],
+      diff: WorkflowDiff
+    ): WorkflowFlowNode[] => {
+      const mergedNodes: WorkflowFlowNode[] = [];
+      const currentNodeMap = new Map(currentNodes.map((n) => [n.id, n]));
 
-      // Convert draft connections to React Flow edges
-      const rfEdges: Edge[] = [];
-      Object.entries(draft.connections).forEach(([sourceId, conn]) => {
+      // Add draft nodes with diff status
+      for (const draftNode of draftNodes) {
+        const nodeDiff = diff.nodes.find((n) => n.nodeId === draftNode.id);
+        const diffStatus = nodeDiff?.status ?? 'unchanged';
+        const diffChanges = nodeDiff?.changes;
+
+        mergedNodes.push({
+          id: draftNode.id,
+          type: 'workflowNode',
+          position: { x: draftNode.position[0], y: draftNode.position[1] },
+          data: {
+            label: draftNode.name,
+            nodeType: draftNode.nodeType,
+            type: draftNode.type,
+            parameters: draftNode.parameters,
+            disabled: draftNode.disabled,
+            diffStatus,
+            diffChanges,
+          },
+        });
+      }
+
+      // Add removed nodes (from current but not in draft)
+      for (const nodeDiff of diff.nodes) {
+        if (nodeDiff.status === 'removed') {
+          const currentNode = currentNodeMap.get(nodeDiff.nodeId);
+          if (currentNode) {
+            mergedNodes.push({
+              ...currentNode,
+              data: {
+                ...currentNode.data,
+                diffStatus: 'removed',
+              },
+            });
+          }
+        }
+      }
+
+      return mergedNodes;
+    },
+    []
+  );
+
+  // Build merged edges with diff styling for preview
+  const buildMergedEdgesWithDiff = useCallback(
+    (
+      currentEdges: Edge[],
+      draftConnections: WorkflowDraftConnections,
+      diff: WorkflowDiff
+    ): Edge[] => {
+      const mergedEdges: Edge[] = [];
+
+      // Add draft edges
+      Object.entries(draftConnections).forEach(([sourceId, conn]) => {
         conn.main.forEach((outputs, outputIndex) => {
           outputs.forEach((target, targetIdx) => {
-            rfEdges.push({
-              id: `${sourceId}-${target.node}-${outputIndex}-${targetIdx}`,
+            const edgeId = `${sourceId}-${target.node}-${outputIndex}-${targetIdx}`;
+            const edgeDiff = diff.edges.find((e) => e.edgeId === edgeId);
+            const isNew = edgeDiff?.status === 'new';
+
+            mergedEdges.push({
+              id: edgeId,
               source: sourceId,
               target: target.node,
               sourceHandle: `output-${outputIndex}`,
               targetHandle: undefined,
               ...defaultEdgeOptions,
+              style: isNew
+                ? { ...defaultEdgeOptions.style, stroke: '#10b981', strokeDasharray: '5,5' }
+                : defaultEdgeOptions.style,
             });
           });
         });
       });
 
-      // Update the canvas
-      setNodes(rfNodes);
-      setEdges(rfEdges);
-
-      // Update workflow metadata
-      if (draft.name) {
-        setWorkflowName(draft.name);
+      // Add removed edges (from current but not in draft)
+      for (const edgeDiff of diff.edges) {
+        if (edgeDiff.status === 'removed') {
+          const currentEdge = currentEdges.find((e) => e.id === edgeDiff.edgeId);
+          if (currentEdge) {
+            mergedEdges.push({
+              ...currentEdge,
+              style: {
+                ...defaultEdgeOptions.style,
+                stroke: '#ef4444',
+                strokeDasharray: '5,5',
+                opacity: 0.5,
+              },
+            });
+          }
+        }
       }
-      if (draft.description) {
-        setWorkflowDescription(draft.description);
-      }
 
-      toast.success('Draft applied to canvas');
+      return mergedEdges;
     },
-    [setNodes, setEdges],
+    []
   );
+
+  // Enter preview mode when AI draft is ready
+  const handleApplyDraft = useCallback(
+    (draft: WorkflowDraft) => {
+      // Compute diff between current state and draft
+      const diff = computeWorkflowDiff(
+        nodes,
+        edges,
+        draft.nodes as WorkflowDraftNode[],
+        draft.connections as WorkflowDraftConnections
+      );
+
+      // If no changes, just show a message
+      if (!diff.hasChanges) {
+        toast.info('No changes detected in this draft');
+        return;
+      }
+
+      // Build merged view with diff status
+      const mergedNodes = buildMergedNodesWithDiff(
+        nodes,
+        draft.nodes as WorkflowDraftNode[],
+        diff
+      );
+      const mergedEdges = buildMergedEdgesWithDiff(
+        edges,
+        draft.connections as WorkflowDraftConnections,
+        diff
+      );
+
+      // Enter preview mode
+      setPreviewState({
+        isActive: true,
+        draft,
+        diff,
+        mergedNodes,
+        mergedEdges,
+      });
+
+      toast.info('Review the changes and click Apply to confirm');
+    },
+    [nodes, edges, buildMergedNodesWithDiff, buildMergedEdgesWithDiff]
+  );
+
+  // Confirm and apply the preview changes
+  const handleConfirmApply = useCallback(() => {
+    if (!previewState?.draft) return;
+
+    const draft = previewState.draft;
+
+    // Convert draft nodes to React Flow nodes (without diff status)
+    const rfNodes: WorkflowFlowNode[] = (draft.nodes as WorkflowDraftNode[]).map((node) => ({
+      id: node.id,
+      type: 'workflowNode',
+      position: { x: node.position[0], y: node.position[1] },
+      data: {
+        label: node.name,
+        nodeType: node.nodeType,
+        type: node.type,
+        parameters: node.parameters,
+        disabled: node.disabled,
+      },
+    }));
+
+    // Convert draft connections to React Flow edges
+    const rfEdges: Edge[] = [];
+    Object.entries(draft.connections as WorkflowDraftConnections).forEach(([sourceId, conn]) => {
+      conn.main.forEach((outputs, outputIndex) => {
+        outputs.forEach((target, targetIdx) => {
+          rfEdges.push({
+            id: `${sourceId}-${target.node}-${outputIndex}-${targetIdx}`,
+            source: sourceId,
+            target: target.node,
+            sourceHandle: `output-${outputIndex}`,
+            targetHandle: undefined,
+            ...defaultEdgeOptions,
+          });
+        });
+      });
+    });
+
+    // Update the canvas
+    setNodes(rfNodes);
+    setEdges(rfEdges);
+
+    // Update workflow metadata
+    if (draft.name) {
+      setWorkflowName(draft.name);
+    }
+    if (draft.description) {
+      setWorkflowDescription(draft.description);
+    }
+
+    // Exit preview mode
+    setPreviewState(null);
+
+    toast.success('Changes applied successfully');
+  }, [previewState, setNodes, setEdges]);
+
+  // Discard preview and restore original state
+  const handleDiscardPreview = useCallback(() => {
+    setPreviewState(null);
+    toast.info('Changes discarded');
+  }, []);
 
   // Apply AI-generated suggestions (from execution analysis)
   const handleApplySuggestion = useCallback(
@@ -635,27 +812,39 @@ export default function WorkflowEditorPage() {
         <NodePalette onAddNode={handleAddNode} />
 
         {/* Canvas */}
-        <div className="flex-1">
+        <div className="flex-1 relative">
+          {/* Diff Preview Bar */}
+          {previewState?.isActive && previewState.diff && (
+            <DiffPreviewBar
+              summary={previewState.diff.summary}
+              onApply={handleConfirmApply}
+              onDiscard={handleDiscardPreview}
+            />
+          )}
+
           <ReactFlow
-            nodes={nodesWithHighlight}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
+            nodes={previewState?.isActive ? previewState.mergedNodes : nodesWithHighlight}
+            edges={previewState?.isActive ? previewState.mergedEdges : edges}
+            onNodesChange={previewState?.isActive ? undefined : onNodesChange}
+            onEdgesChange={previewState?.isActive ? undefined : onEdgesChange}
+            onConnect={previewState?.isActive ? undefined : onConnect}
+            onNodeClick={previewState?.isActive ? undefined : onNodeClick}
+            onPaneClick={previewState?.isActive ? undefined : onPaneClick}
             nodeTypes={nodeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
             fitView
             className="bg-muted/30"
+            nodesDraggable={!previewState?.isActive}
+            nodesConnectable={!previewState?.isActive}
+            elementsSelectable={!previewState?.isActive}
           >
             <Controls />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
           </ReactFlow>
         </div>
 
-        {/* Config Panel - hidden when AI sidebar is open */}
-        {selectedNode && !isAISidebarOpen && (
+        {/* Config Panel - hidden when AI sidebar is open or in preview mode */}
+        {selectedNode && !isAISidebarOpen && !previewState?.isActive && (
           <NodeConfigPanel
             node={selectedNode}
             onClose={() => setSelectedNode(null)}
@@ -680,7 +869,13 @@ export default function WorkflowEditorPage() {
             onHighlightNodes={setHighlightedNodeIds}
             labels={labels.map((l) => ({ id: l.id || l.name, name: l.name }))}
             skills={skills.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))}
-            onClose={() => setAISidebarOpen(false)}
+            onClose={() => {
+              setAISidebarOpen(false);
+              // Exit preview mode if active
+              if (previewState?.isActive) {
+                setPreviewState(null);
+              }
+            }}
           />
         )}
       </div>
