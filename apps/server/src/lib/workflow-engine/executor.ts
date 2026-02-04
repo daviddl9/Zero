@@ -237,6 +237,7 @@ export class WorkflowExecutor {
         passed: result.passed,
         outputIndex: result.outputIndex,
         category: result.category,
+        reasoning: result.reasoning,
       };
     } catch (error) {
       return {
