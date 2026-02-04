@@ -3,3 +3,8 @@ export { NodePalette } from './node-palette';
 export { NodeConfigPanel } from './node-config-panel';
 export { TestWorkflowModal } from './test-workflow-modal';
 export { ExecutionHistory } from './execution-history';
+export { WorkflowAISidebar, type WorkflowAISidebarProps, type WorkflowDraft } from './workflow-ai-sidebar';
+export { WorkflowChat, type WorkflowChatProps } from './workflow-chat';
+export { ExecutionAnalysis, type ExecutionAnalysisProps, type WorkflowSuggestion } from './execution-analysis';
+export { SuggestionCard, type SuggestionCardProps } from './suggestion-card';
+export { DraftPreview, type DraftPreviewProps } from './draft-preview';
