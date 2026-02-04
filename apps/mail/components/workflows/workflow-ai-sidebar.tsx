@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { X, Sparkles, FileText, BarChart3 } from 'lucide-react';
 import { useWorkflowAI, type WorkflowAIMode } from '@/hooks/use-workflow-ai';
 import { WorkflowChat } from './workflow-chat';
-import { ExecutionAnalysis, type WorkflowSuggestion } from './execution-analysis';
+import { ExecutionAnalysis } from './execution-analysis';
 import type { WorkflowNodeData } from './workflow-node';
 
 // ============================================================================
@@ -42,7 +42,6 @@ export interface WorkflowAISidebarProps {
   nodes: Node<WorkflowNodeData>[];
   edges: Edge[];
   onApplyDraft: (draft: WorkflowDraft) => void;
-  onApplySuggestion?: (suggestion: WorkflowSuggestion) => void;
   onHighlightNodes: (nodeIds: string[]) => void;
   labels: Array<{ id: string; name: string }>;
   skills: Array<{ id: string; name: string }>;
@@ -58,7 +57,6 @@ export function WorkflowAISidebar({
   nodes: _nodes,
   edges: _edges,
   onApplyDraft,
-  onApplySuggestion: onApplySuggestionProp,
   onHighlightNodes,
   labels,
   skills,
@@ -96,29 +94,6 @@ export function WorkflowAISidebar({
       onApplyDraft(currentDraftRef.current);
     }
   }, [onApplyDraft]);
-
-  // Handle applying a suggestion from execution analysis
-  // Use the prop if provided, otherwise fall back to basic implementation
-  const handleApplySuggestion = useCallback(
-    (suggestion: WorkflowSuggestion) => {
-      // If a custom handler is provided, use it for full control
-      if (onApplySuggestionProp) {
-        onApplySuggestionProp(suggestion);
-        return;
-      }
-
-      // Fallback: Convert suggestion's proposed fix to a draft format if it has one
-      if (suggestion.proposedFix?.addNodes) {
-        const draft: WorkflowDraft = {
-          name: 'Applied Suggestion',
-          nodes: suggestion.proposedFix.addNodes,
-          connections: suggestion.proposedFix.updateConnections ?? {},
-        };
-        onApplyDraft(draft);
-      }
-    },
-    [onApplySuggestionProp, onApplyDraft],
-  );
 
   return (
     <div className="w-96 border-l bg-background flex flex-col h-full">
@@ -165,7 +140,6 @@ export function WorkflowAISidebar({
               <ExecutionAnalysis
                 workflowId={workflowId}
                 onHighlightNodes={onHighlightNodes}
-                onApplySuggestion={handleApplySuggestion}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center py-8">

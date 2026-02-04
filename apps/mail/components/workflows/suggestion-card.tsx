@@ -2,7 +2,6 @@
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   Zap,
@@ -35,25 +34,7 @@ type SuggestionType =
 
 type Priority = 'low' | 'medium' | 'high';
 
-interface ProposedFix {
-  addNodes?: Array<{
-    id: string;
-    type: 'trigger' | 'condition' | 'action';
-    nodeType: string;
-    name: string;
-    position: [number, number];
-    parameters: Record<string, unknown>;
-    disabled?: boolean;
-  }>;
-  removeNodeIds?: string[];
-  updateConnections?: Record<
-    string,
-    {
-      main: Array<Array<{ node: string; index: number }>>;
-    }
-  >;
-}
-
+// Note: proposedFix removed for Gemini API compatibility
 interface WorkflowSuggestion {
   type: SuggestionType;
   title: string;
@@ -61,14 +42,12 @@ interface WorkflowSuggestion {
   affectedNodeIds: string[];
   confidence: number;
   priority: Priority;
-  proposedFix?: ProposedFix;
 }
 
 export interface SuggestionCardProps {
   suggestion: WorkflowSuggestion;
   onHover: (nodeIds: string[]) => void;
   onLeave: () => void;
-  onApply: () => void;
 }
 
 // ============================================================================
@@ -128,14 +107,12 @@ export function SuggestionCard({
   suggestion,
   onHover,
   onLeave,
-  onApply,
 }: SuggestionCardProps) {
   const Icon = typeIcons[suggestion.type];
   const iconColor = typeColors[suggestion.type];
   const priorityColor = priorityColors[suggestion.priority];
   const typeLabel = typeLabels[suggestion.type];
   const confidencePercent = Math.round(suggestion.confidence * 100);
-  const hasProposedFix = suggestion.proposedFix !== undefined;
 
   return (
     <Card
@@ -191,21 +168,6 @@ export function SuggestionCard({
               </Badge>
             ))}
           </div>
-        )}
-
-        {/* Apply Fix Button */}
-        {hasProposedFix && (
-          <Button
-            variant="default"
-            size="sm"
-            className="w-full mt-2"
-            onClick={(e) => {
-              e.stopPropagation();
-              onApply();
-            }}
-          >
-            Apply Fix
-          </Button>
         )}
       </CardContent>
     </Card>

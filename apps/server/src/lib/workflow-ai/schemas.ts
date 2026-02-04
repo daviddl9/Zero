@@ -97,6 +97,8 @@ export type SuggestionType = z.infer<typeof SuggestionTypeSchema>;
 // Individual improvement suggestion with proposed fix
 // ============================================================================
 
+// Note: proposedFix removed for Gemini API compatibility
+// Gemini struggles with deeply nested schemas containing tuples and optional arrays
 export const WorkflowSuggestionSchema = z.object({
   type: SuggestionTypeSchema,
   title: z.string().max(80),
@@ -104,13 +106,6 @@ export const WorkflowSuggestionSchema = z.object({
   affectedNodeIds: z.array(z.string()),
   confidence: z.number().min(0).max(1),
   priority: z.enum(['low', 'medium', 'high']),
-  proposedFix: z
-    .object({
-      addNodes: z.array(WorkflowNodeSchema).optional(),
-      removeNodeIds: z.array(z.string()).optional(),
-      updateConnections: WorkflowConnectionsSchema.optional(),
-    })
-    .optional(),
 });
 
 export type WorkflowSuggestion = z.infer<typeof WorkflowSuggestionSchema>;

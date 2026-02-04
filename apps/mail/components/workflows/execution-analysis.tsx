@@ -118,7 +118,6 @@ interface AnalysisResult {
 export interface ExecutionAnalysisProps {
   workflowId: string;
   onHighlightNodes: (nodeIds: string[]) => void;
-  onApplySuggestion: (suggestion: WorkflowSuggestion) => void;
 }
 
 // ============================================================================
@@ -401,7 +400,6 @@ const MINIMUM_EXECUTIONS_FOR_ANALYSIS = 5;
 export function ExecutionAnalysis({
   workflowId,
   onHighlightNodes,
-  onApplySuggestion,
 }: ExecutionAnalysisProps) {
   // State for cached analysis results
   const [cachedAnalysis, setCachedAnalysis] = useState<AnalysisResult | null>(null);
@@ -564,7 +562,6 @@ export function ExecutionAnalysis({
                     suggestion={suggestion}
                     onHover={(nodeIds) => onHighlightNodes(nodeIds)}
                     onLeave={() => onHighlightNodes([])}
-                    onApply={() => onApplySuggestion(suggestion)}
                   />
                 ))}
               </div>
