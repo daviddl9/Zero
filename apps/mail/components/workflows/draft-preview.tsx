@@ -3,7 +3,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Workflow, CheckCircle, HelpCircle, X, Boxes, Zap } from 'lucide-react';
 
@@ -111,10 +110,9 @@ export function DraftPreview({
         </div>
       </CardHeader>
 
-      {/* Scrollable content area - wrapper with relative positioning for absolute ScrollArea */}
-      <div className="flex-1 min-h-0 relative">
-        <ScrollArea className="absolute inset-0" style={{ position: 'absolute' }}>
-          <CardContent className="space-y-4 pt-0">
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <CardContent className="space-y-4 pt-0">
           {/* Description (if present) */}
           {draft.description && (
             <p className="text-sm text-muted-foreground">{draft.description}</p>
@@ -165,8 +163,7 @@ export function DraftPreview({
               </ul>
             </div>
           )}
-          </CardContent>
-        </ScrollArea>
+        </CardContent>
       </div>
 
       {/* Action Buttons - always visible at bottom */}
