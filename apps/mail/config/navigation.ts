@@ -103,6 +103,23 @@ export const navigationConfig: Record<string, NavConfig> = {
           },
         ],
       },
+      {
+        title: 'Automation',
+        items: [
+          {
+            id: 'workflows',
+            title: m['navigation.settings.workflows'](),
+            url: '/settings/workflows',
+            icon: WorkflowIcon,
+          },
+          {
+            id: 'skills',
+            title: m['navigation.settings.skills'](),
+            url: '/settings/skills',
+            icon: Sparkles,
+          },
+        ],
+      },
       // {
       //   title: "Categories",
       //   items: [
