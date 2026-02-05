@@ -84,7 +84,7 @@ function ExamplePrompts({ onPromptClick }: ExamplePromptsProps) {
           <button
             key={prompt}
             onClick={() => onPromptClick(prompt)}
-            className="shrink-0 rounded-md bg-[#f0f0f0] p-1.5 px-3 text-sm text-[#555555] transition-colors hover:bg-[#e5e5e5] dark:bg-[#262626] dark:text-[#929292] dark:hover:bg-[#303030]"
+            className="max-w-full whitespace-normal text-center rounded-md bg-[#f0f0f0] p-1.5 px-3 text-sm text-[#555555] transition-colors hover:bg-[#e5e5e5] dark:bg-[#262626] dark:text-[#929292] dark:hover:bg-[#303030]"
           >
             {prompt}
           </button>
