@@ -112,7 +112,7 @@ export function DraftPreview({
       </CardHeader>
 
       {/* Scrollable content area */}
-      <ScrollArea className="flex-1 min-h-0">
+      <ScrollArea className="flex-1 min-h-0 h-full">
         <CardContent className="space-y-4 pt-0">
           {/* Description (if present) */}
           {draft.description && (
