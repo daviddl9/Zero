@@ -77,7 +77,7 @@ export function DraftPreview({
   const hasQuestions = questions && questions.length > 0;
 
   return (
-    <Card className="border-primary/20 flex flex-col max-h-[60vh]">
+    <Card className="border-primary/20 flex flex-col max-h-[60vh] overflow-hidden">
       <CardHeader className="pb-3 shrink-0">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
