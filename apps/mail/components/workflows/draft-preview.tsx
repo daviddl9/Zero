@@ -111,9 +111,10 @@ export function DraftPreview({
         </div>
       </CardHeader>
 
-      {/* Scrollable content area */}
-      <ScrollArea className="flex-1 min-h-0 h-full">
-        <CardContent className="space-y-4 pt-0">
+      {/* Scrollable content area - wrapper with relative positioning for absolute ScrollArea */}
+      <div className="flex-1 min-h-0 relative">
+        <ScrollArea className="absolute inset-0">
+          <CardContent className="space-y-4 pt-0">
           {/* Description (if present) */}
           {draft.description && (
             <p className="text-sm text-muted-foreground">{draft.description}</p>
@@ -164,8 +165,9 @@ export function DraftPreview({
               </ul>
             </div>
           )}
-        </CardContent>
-      </ScrollArea>
+          </CardContent>
+        </ScrollArea>
+      </div>
 
       {/* Action Buttons - always visible at bottom */}
       <div className="shrink-0 px-6 py-4 border-t flex gap-2">
