@@ -477,13 +477,19 @@ export default function WorkflowEditorPage() {
         });
       }
 
-      // Add removed nodes (from current but not in draft)
+      // Add removed nodes with horizontal offset to avoid overlap with new nodes
+      const REMOVED_NODE_OFFSET_X = -300;
+
       for (const nodeDiff of diff.nodes) {
         if (nodeDiff.status === 'removed') {
           const currentNode = currentNodeMap.get(nodeDiff.nodeId);
           if (currentNode) {
             mergedNodes.push({
               ...currentNode,
+              position: {
+                x: currentNode.position.x + REMOVED_NODE_OFFSET_X,
+                y: currentNode.position.y,
+              },
               data: {
                 ...currentNode.data,
                 diffStatus: 'removed',
