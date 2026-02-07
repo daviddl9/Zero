@@ -1,5 +1,106 @@
 # Zero Email - Project Instructions
 
+## Raspberry Pi Network Architecture
+
+Both Zero Email and Statement Parser run on a single Raspberry Pi, sharing one nginx reverse proxy but on **isolated Docker networks** with separate databases. Tailscale provides VPN access, Split DNS routes `*.dvhome.com` to the Pi, and nginx does hostname-based routing.
+
+```
+                         Tailscale Network
+               ┌───────────────────────────────────┐
+               │  MagicDNS: taile015d9.ts.net       │
+               │  Split DNS: *.dvhome.com → Pi      │
+               │  Pi Tailscale IP: 100.100.34.25    │
+               └──────────────┬────────────────────┘
+                              │
+         ┌────────────────────┼────────────────────────┐
+         │ email.dvhome.com   │   finances.dvhome.com  │
+         │ mail.dvhome.com    │                        │
+         │ raspberrypi.taile015d9.ts.net               │
+         └────────────────────┼────────────────────────┘
+                              ▼
+            Raspberry Pi (host ports :80, :443)
+   ┌───────────────────────────────────────────────────────┐
+   │                                                       │
+   │  ┌───────────────────────────────────────────────┐    │
+   │  │  zero-nginx (:80, :443)                       │    │
+   │  │  Config: nginx.tailscale.conf (in Zero repo)  │    │
+   │  │                                               │    │
+   │  │  Hostname Routing:                            │    │
+   │  │  ┌─────────────────────┬────────────────────┐ │    │
+   │  │  │ email/mail.dvhome   │ → 301 → *.ts.net  │ │    │
+   │  │  │ *.ts.net (HTTPS)    │ → Zero SPA+API    │─┼─┐  │
+   │  │  │ finances.dvhome /   │ → 172.17.0.1:3000 │─┼─┼─┐│
+   │  │  │ finances /backend-  │ → 172.17.0.1:8000 │─┼─┼─┤│
+   │  │  │  api/*  (strip pfx) │                    │ │ │ ││
+   │  │  └─────────────────────┴────────────────────┘ │ │ ││
+   │  └───────────────────────────────────────────────┘ │ ││
+   │                                                    │ ││
+   │  ┌─ zero-network ──────────────────────────┐       │ ││
+   │  │                          ▲               │       │ ││
+   │  │  zero-server (Node.js :8787) ◄──────────┼───────┘ ││
+   │  │  zero-db (pgvector:pg17 :5432)          │         ││
+   │  │    └─ database: zerodotemail            │         ││
+   │  │  zero-valkey (redis:7 :6379)            │         ││
+   │  │                                         │         ││
+   │  │  S3 → 172.17.0.1:9000 ─────────────────┼──┐      ││
+   │  └─────────────────────────────────────────┘  │      ││
+   │                                               │      ││
+   │  ┌─ statement-parser_default ──────────────┐  │      ││
+   │  │                                         │  │      ││
+   │  │  frontend (Next.js :3000) ◄─────────────┼──┼──────┘│
+   │  │  api (FastAPI :8000)      ◄─────────────┼──┼───────┘
+   │  │  worker (arq background jobs)           │  │
+   │  │  db (postgres:16 :5432)                 │  │
+   │  │    └─ database: statements              │  │
+   │  │  redis (redis:7 :6379)                  │  │
+   │  │  minio (:9000/:9001) ◄──── shared ──────┼──┘
+   │  └─────────────────────────────────────────┘
+   │
+   └───────────────────────────────────────────────────────┘
+
+Cross-network communication: via Docker bridge gateway 172.17.0.1
+  - zero-nginx → statement-parser frontend/api (hostname routing)
+  - zero-server → statement-parser minio (S3 storage)
+```
+
+### Domain Routing
+
+| Domain | Protocol | Destination |
+|--------|----------|-------------|
+| `email.dvhome.com` | HTTP | 301 → `https://raspberrypi.taile015d9.ts.net` |
+| `mail.dvhome.com` | HTTP | 301 → `https://raspberrypi.taile015d9.ts.net` |
+| `raspberrypi.taile015d9.ts.net` | HTTPS | Zero Email (SPA + API via upstream `server:8787`) |
+| `finances.dvhome.com` | HTTP+HTTPS | Statement Parser (`/` → Next.js :3000, `/backend-api/*` → FastAPI :8000) |
+
+### Containers & Networks
+
+| Container | Image | Network | Port |
+|-----------|-------|---------|------|
+| `zero-nginx` | nginx:alpine | `zero-network` | :80, :443 (host) |
+| `zero-server` | Node.js | `zero-network` | :8787 (internal) |
+| `zero-db` | pgvector:pg17 | `zero-network` | :5432 (internal) |
+| `zero-valkey` | redis:7-alpine | `zero-network` | :6379 (internal) |
+| `statement-parser-frontend-pi` | Next.js | `statement-parser_default` | :3000 |
+| `statement-parser-api-pi` | FastAPI | `statement-parser_default` | :8000 |
+| `statement-parser-worker-pi` | arq | `statement-parser_default` | — |
+| `statement-parser-db-pi` | postgres:16 | `statement-parser_default` | :5432 (internal) |
+| `statement-parser-redis-pi` | redis:7 | `statement-parser_default` | :6379 (internal) |
+| `statement-parser-minio-pi` | minio | `statement-parser_default` | :9000, :9001 |
+
+### Shared Resources
+
+- **MinIO (S3)**: Owned by Statement Parser. Zero Email accesses via Docker bridge `172.17.0.1:9000`.
+- **Nginx config**: `nginx.tailscale.conf` in this repo controls routing for both services.
+
+### Key Config Files
+
+| File | Purpose |
+|------|---------|
+| `nginx.tailscale.conf` | Central nginx routing config for both services |
+| `docker-compose.standalone.yaml` | Base Zero services definition |
+| `docker-compose.pi.yaml` | Pi overrides (external MinIO, port change) |
+| `docker-compose.tailscale.yaml` | HTTPS overlay (ports 80/443, Tailscale certs) |
+
 ## Self-Hosted Mode Debugging
 
 When debugging the self-hosted/standalone deployment on Raspberry Pi, use these commands:
