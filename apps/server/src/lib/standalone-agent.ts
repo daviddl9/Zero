@@ -206,19 +206,28 @@ export function createStandaloneAgent(
         }
       }
 
-      // 3. Query provided — do a targeted Gmail search for matching senders
+      // 3. Query provided — do a general Gmail search then filter senders
+      //    Using general search (not `from:`) because Gmail's from: operator
+      //    requires exact token matches (e.g. from:chace won't match chaceteo@...)
       try {
         const { threads } = await driver.list({
           folder: 'INBOX',
-          query: `from:${query}`,
-          maxResults: 10,
+          query: query,
+          maxResults: 15,
         });
 
         const senderMap = new Map<string, { email: string; name: string | null; count: number }>();
         await extractSenders(threads, senderMap);
 
+        // Filter senders whose email or name contains the search term
+        const allSenders = toSuggestions(senderMap);
+        const results = allSenders.filter(
+          (s) =>
+            s.email.toLowerCase().includes(lower) ||
+            (s.name && s.name.toLowerCase().includes(lower)),
+        );
+
         // Merge with cached contacts if available
-        const results = toSuggestions(senderMap);
         const cachedMatches = cached
           ? cached.contacts.filter(
               (c) =>
