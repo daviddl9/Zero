@@ -133,59 +133,39 @@ export function createStandaloneAgent(
     ): Promise<RecipientSuggestion[]> {
       const cacheKey = activeConnection.email;
       const cached = recipientCaches.get(cacheKey);
+      const lower = query.toLowerCase();
 
-      if (cached && Date.now() - cached.timestamp < RECIPIENT_CACHE_TTL) {
-        const lower = query.toLowerCase();
-        const filtered = lower
-          ? cached.contacts.filter(
-              (c) =>
-                c.email.toLowerCase().includes(lower) ||
-                (c.name && c.name.toLowerCase().includes(lower)),
-            )
-          : cached.contacts;
-        return filtered.slice(0, limit);
-      }
-
-      // Fetch recent threads and extract senders
-      try {
-        const { threads } = await driver.list({
-          folder: 'INBOX',
-          maxResults: 30,
-        });
-
-        const senderMap = new Map<
-          string,
-          { email: string; name: string | null; count: number }
-        >();
-
-        // Fetch thread details in parallel (batches of 5 to avoid rate limits)
+      // Helper: extract unique senders from thread IDs
+      const extractSenders = async (
+        threadIds: { id: string }[],
+        into: Map<string, { email: string; name: string | null; count: number }>,
+      ) => {
         const batchSize = 5;
-        for (let i = 0; i < threads.length; i += batchSize) {
-          const batch = threads.slice(i, i + batchSize);
+        for (let i = 0; i < threadIds.length; i += batchSize) {
+          const batch = threadIds.slice(i, i + batchSize);
           const results = await Promise.allSettled(
             batch.map((t) => driver.get(t.id)),
           );
           for (const result of results) {
             if (result.status !== 'fulfilled') continue;
-            const thread = result.value;
-            for (const msg of thread.messages) {
+            for (const msg of result.value.messages) {
               const from = msg.sender;
               if (!from?.email) continue;
               const key = from.email.toLowerCase();
-              if (!senderMap.has(key)) {
-                senderMap.set(key, {
-                  email: from.email,
-                  name: from.name || null,
-                  count: 1,
-                });
+              if (!into.has(key)) {
+                into.set(key, { email: from.email, name: from.name || null, count: 1 });
               } else {
-                senderMap.get(key)!.count += 1;
+                into.get(key)!.count += 1;
               }
             }
           }
         }
+      };
 
-        const contacts: RecipientSuggestion[] = Array.from(senderMap.values())
+      const toSuggestions = (
+        map: Map<string, { email: string; name: string | null; count: number }>,
+      ): RecipientSuggestion[] =>
+        Array.from(map.values())
           .sort((a, b) => b.count - a.count)
           .map((c) => ({
             email: c.email,
@@ -193,19 +173,82 @@ export function createStandaloneAgent(
             displayText: c.name ? `${c.name} <${c.email}>` : c.email,
           }));
 
-        recipientCaches.set(cacheKey, { contacts, timestamp: Date.now() });
-
-        const lower = query.toLowerCase();
+      // 1. Try cache first
+      if (cached && Date.now() - cached.timestamp < RECIPIENT_CACHE_TTL) {
         const filtered = lower
-          ? contacts.filter(
+          ? cached.contacts.filter(
               (c) =>
                 c.email.toLowerCase().includes(lower) ||
                 (c.name && c.name.toLowerCase().includes(lower)),
             )
-          : contacts;
-        return filtered.slice(0, limit);
+          : cached.contacts;
+
+        // If cache has enough matches, return them
+        if (filtered.length >= limit || !lower) {
+          return filtered.slice(0, limit);
+        }
+
+        // Cache didn't have enough — do a targeted Gmail search below
+      }
+
+      // 2. If no query, build the base cache from recent inbox threads
+      if (!lower) {
+        try {
+          const { threads } = await driver.list({ folder: 'INBOX', maxResults: 30 });
+          const senderMap = new Map<string, { email: string; name: string | null; count: number }>();
+          await extractSenders(threads, senderMap);
+          const contacts = toSuggestions(senderMap);
+          recipientCaches.set(cacheKey, { contacts, timestamp: Date.now() });
+          return contacts.slice(0, limit);
+        } catch (error) {
+          console.error('[StandaloneAgent] suggestRecipients cache build error:', error);
+          return [];
+        }
+      }
+
+      // 3. Query provided — do a targeted Gmail search for matching senders
+      try {
+        const { threads } = await driver.list({
+          folder: 'INBOX',
+          query: `from:${query}`,
+          maxResults: 10,
+        });
+
+        const senderMap = new Map<string, { email: string; name: string | null; count: number }>();
+        await extractSenders(threads, senderMap);
+
+        // Merge with cached contacts if available
+        const results = toSuggestions(senderMap);
+        const cachedMatches = cached
+          ? cached.contacts.filter(
+              (c) =>
+                c.email.toLowerCase().includes(lower) ||
+                (c.name && c.name.toLowerCase().includes(lower)),
+            )
+          : [];
+
+        // Dedupe: targeted search results first, then cached matches
+        const seen = new Set(results.map((r) => r.email.toLowerCase()));
+        for (const c of cachedMatches) {
+          if (!seen.has(c.email.toLowerCase())) {
+            results.push(c);
+            seen.add(c.email.toLowerCase());
+          }
+        }
+
+        return results.slice(0, limit);
       } catch (error) {
-        console.error('[StandaloneAgent] suggestRecipients error:', error);
+        console.error('[StandaloneAgent] suggestRecipients search error:', error);
+        // Fall back to whatever we have in cache
+        if (cached) {
+          return cached.contacts
+            .filter(
+              (c) =>
+                c.email.toLowerCase().includes(lower) ||
+                (c.name && c.name.toLowerCase().includes(lower)),
+            )
+            .slice(0, limit);
+        }
         return [];
       }
     },

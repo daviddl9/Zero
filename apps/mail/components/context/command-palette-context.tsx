@@ -189,6 +189,7 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
   const [saveSearchName, setSaveSearchName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [commandInputValue, setCommandInputValue] = useState('');
+  const [debouncedContactQuery, setDebouncedContactQuery] = useState('');
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -204,6 +205,21 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
     staleTime: 5 * 60 * 1000,
   });
   const prefetchedContacts = (Array.isArray(prefetchedContactsData) ? prefetchedContactsData : []) as {
+    email: string;
+    name?: string | null;
+    displayText: string;
+  }[];
+
+  // Server-side targeted search for contacts not in the pre-fetched cache
+  const { data: searchedContactsData } = useQuery({
+    ...trpc.mail.suggestRecipients.queryOptions({
+      query: debouncedContactQuery,
+      limit: 10,
+    }),
+    enabled: !!open && debouncedContactQuery.length >= 2,
+    staleTime: 2 * 60 * 1000,
+  });
+  const searchedContacts = (Array.isArray(searchedContactsData) ? searchedContactsData : []) as {
     email: string;
     name?: string | null;
     displayText: string;
@@ -239,8 +255,21 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
       setSaveSearchName('');
       setFilterBuilderState({});
       setCommandInputValue('');
+      setDebouncedContactQuery('');
     }
   }, [open]);
+
+  // Debounce the contact search query (300ms) for server-side fallback
+  useEffect(() => {
+    if (!commandInputValue || commandInputValue.trim().length < 2) {
+      setDebouncedContactQuery('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedContactQuery(commandInputValue.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [commandInputValue]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -730,26 +759,44 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
   const filteredContacts = useMemo(() => {
     if (!commandInputValue || commandInputValue.trim().length < 2) return [];
     const term = commandInputValue.toLowerCase();
-    return prefetchedContacts
-      .filter(
-        (c: { email: string; name?: string | null }) =>
-          c.email.toLowerCase().includes(term) ||
-          (c.name && c.name.toLowerCase().includes(term)),
-      )
-      .slice(0, 5);
-  }, [commandInputValue, prefetchedContacts]);
+    const localMatches = prefetchedContacts.filter(
+      (c: { email: string; name?: string | null }) =>
+        c.email.toLowerCase().includes(term) ||
+        (c.name && c.name.toLowerCase().includes(term)),
+    );
+
+    // Merge server-side results (deduped)
+    const seen = new Set(localMatches.map((c) => c.email.toLowerCase()));
+    for (const c of searchedContacts) {
+      if (!seen.has(c.email.toLowerCase())) {
+        localMatches.push(c);
+        seen.add(c.email.toLowerCase());
+      }
+    }
+
+    return localMatches.slice(0, 5);
+  }, [commandInputValue, prefetchedContacts, searchedContacts]);
 
   const filteredSearchContacts = useMemo(() => {
     if (!searchQuery || searchQuery.trim().length < 2) return [];
     const term = searchQuery.toLowerCase();
-    return prefetchedContacts
-      .filter(
-        (c: { email: string; name?: string | null }) =>
-          c.email.toLowerCase().includes(term) ||
-          (c.name && c.name.toLowerCase().includes(term)),
-      )
-      .slice(0, 5);
-  }, [searchQuery, prefetchedContacts]);
+    const localMatches = prefetchedContacts.filter(
+      (c: { email: string; name?: string | null }) =>
+        c.email.toLowerCase().includes(term) ||
+        (c.name && c.name.toLowerCase().includes(term)),
+    );
+
+    // Merge server-side results (deduped)
+    const seen = new Set(localMatches.map((c) => c.email.toLowerCase()));
+    for (const c of searchedContacts) {
+      if (!seen.has(c.email.toLowerCase())) {
+        localMatches.push(c);
+        seen.add(c.email.toLowerCase());
+      }
+    }
+
+    return localMatches.slice(0, 5);
+  }, [searchQuery, prefetchedContacts, searchedContacts]);
 
   const hasMatchingCommands = useMemo(() => {
     if (!commandInputValue.trim()) return true;
