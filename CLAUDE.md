@@ -27,8 +27,9 @@ Both Zero Email and Statement Parser run on a single Raspberry Pi, sharing one n
    │  │                                               │    │
    │  │  Hostname Routing:                            │    │
    │  │  ┌─────────────────────┬────────────────────┐ │    │
-   │  │  │ email/mail.dvhome   │ → 301 → *.ts.net  │ │    │
-   │  │  │ *.ts.net (HTTPS)    │ → Zero SPA+API    │─┼─┐  │
+   │  │  │ mail.dvhome (HTTPS) │ → Zero SPA+API    │─┼─┐  │
+   │  │  │ email.dvhome        │ → 301 → mail.*    │ │ │  │
+   │  │  │ *.ts.net (HTTPS)    │ → Zero SPA+API    │─┼─┤  │
    │  │  │ finances.dvhome /   │ → 172.17.0.1:3000 │─┼─┼─┐│
    │  │  │ finances /backend-  │ → 172.17.0.1:8000 │─┼─┼─┤│
    │  │  │  api/*  (strip pfx) │                    │ │ │ ││
@@ -67,9 +68,9 @@ Cross-network communication: via Docker bridge gateway 172.17.0.1
 
 | Domain | Protocol | Destination |
 |--------|----------|-------------|
-| `email.dvhome.com` | HTTP | 301 → `https://raspberrypi.taile015d9.ts.net` |
-| `mail.dvhome.com` | HTTP | 301 → `https://raspberrypi.taile015d9.ts.net` |
-| `raspberrypi.taile015d9.ts.net` | HTTPS | Zero Email (SPA + API via upstream `server:8787`) |
+| `mail.dvhome.com` | HTTPS | Zero Email (SPA + API via upstream `server:8787`, mkcert cert) |
+| `email.dvhome.com` | HTTP+HTTPS | 301 → `https://mail.dvhome.com` |
+| `raspberrypi.taile015d9.ts.net` | HTTPS | Zero Email (Tailscale cert, fallback for devices without mkcert CA) |
 | `finances.dvhome.com` | HTTP+HTTPS | Statement Parser (`/` → Next.js :3000, `/backend-api/*` → FastAPI :8000) |
 
 ### Containers & Networks
