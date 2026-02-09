@@ -553,6 +553,7 @@ export class GoogleMailManager implements MailManager {
     const options = Array.isArray(addOrOptions)
       ? { addLabels: addOrOptions as string[], removeLabels: maybeRemove ?? [] }
       : addOrOptions;
+    console.log(`[Gmail] modifyLabels: threads=[${threadIds}] add=[${options.addLabels}] remove=[${options.removeLabels}]`);
     return this.withErrorHandler(
       'modifyLabels',
       async () => {

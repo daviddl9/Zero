@@ -792,7 +792,14 @@ function createJobDependencies(
                 receivedAt: threadData.receivedOn,
               },
               modifyThread: async (tid, opts) => {
-                await driver.modifyLabels([tid], opts);
+                console.log(`[WorkflowAction] modifyThread: thread=${tid} add=[${opts.addLabels}] remove=[${opts.removeLabels}]`);
+                try {
+                  await driver.modifyLabels([tid], opts);
+                  console.log(`[WorkflowAction] modifyThread SUCCESS: thread=${tid}`);
+                } catch (error) {
+                  console.error(`[WorkflowAction] modifyThread FAILED: thread=${tid}`, error);
+                  throw error;
+                }
               },
               getLabels: async () => {
                 const labels = await driver.getUserLabels();
