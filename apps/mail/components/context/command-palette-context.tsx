@@ -46,8 +46,7 @@ import { navigationConfig } from '@/config/navigation';
 import { Separator } from '@/components/ui/separator';
 import { useTRPC } from '@/providers/query-provider';
 import { Calendar } from '@/components/ui/calendar';
-import { useMutation } from '@tanstack/react-query';
-import { useThreads } from '@/hooks/use-threads';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLabels } from '@/hooks/use-labels';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -182,14 +181,12 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
   const [dateRangeEnd, setDateRangeEnd] = useState<Date | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchValue, setSearchValue] = useSearchValue();
-  const [, threads] = useThreads();
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   //   const [selectedLabels] = useState<string[]>([]);
   const [filterBuilderState, setFilterBuilderState] = useState<Record<string, string>>({});
   const [saveSearchName, setSaveSearchName] = useState('');
-  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [commandInputValue, setCommandInputValue] = useState('');
   const navigate = useNavigate();
@@ -200,6 +197,17 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
   const { mutateAsync: generateSearchQuery } = useMutation(
     trpc.ai.generateSearchQuery.mutationOptions(),
   );
+
+  const { data: prefetchedContactsData } = useQuery({
+    ...trpc.mail.suggestRecipients.queryOptions({ query: '', limit: 50 }),
+    enabled: !!open,
+    staleTime: 5 * 60 * 1000,
+  });
+  const prefetchedContacts = (Array.isArray(prefetchedContactsData) ? prefetchedContactsData : []) as {
+    email: string;
+    name?: string | null;
+    displayText: string;
+  }[];
 
   useEffect(() => {
     setRecentSearches(getRecentSearches());
@@ -223,21 +231,6 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
       console.error('Failed to load active filters:', error);
     }
   }, []);
-
-  useEffect(() => {
-    if (threads && Array.isArray(threads)) {
-      const emails = new Set<string>();
-      threads.forEach((thread: any) => {
-        if (thread?.from?.email) emails.add(thread.from.email);
-        if (thread?.to && Array.isArray(thread.to)) {
-          thread.to.forEach((recipient: any) => {
-            if (recipient?.email) emails.add(recipient.email);
-          });
-        }
-      });
-      setEmailSuggestions(Array.from(emails).slice(0, 20));
-    }
-  }, [threads]);
 
   useEffect(() => {
     if (!open) {
@@ -604,43 +597,6 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
     [activeFilters, searchValue.folder, isProcessing],
   );
 
-  const quickSearchResults = useMemo(() => {
-    try {
-      if (!searchQuery || searchQuery.length < 2 || !threads) return [];
-
-      const validThreads = Array.isArray(threads) ? threads.filter(Boolean) : [];
-      if (validThreads.length === 0) return [];
-
-      return validThreads
-        .filter((thread: any) => {
-          try {
-            if (!thread || typeof thread !== 'object') return false;
-
-            const query = searchQuery.toLowerCase();
-
-            const snippet = thread.snippet?.toString() || '';
-            const subject = thread.subject?.toString() || '';
-            const fromName = thread.from?.name?.toString() || '';
-            const fromEmail = thread.from?.email?.toString() || '';
-
-            return (
-              snippet.toLowerCase().includes(query) ||
-              subject.toLowerCase().includes(query) ||
-              fromName.toLowerCase().includes(query) ||
-              fromEmail.toLowerCase().includes(query)
-            );
-          } catch (err) {
-            console.error('Error filtering thread:', err);
-            return false;
-          }
-        })
-        .slice(0, 5);
-    } catch (error) {
-      console.error('Error processing search results:', error);
-      return [];
-    }
-  }, [searchQuery, threads]);
-
   const allCommands = useMemo(() => {
     type CommandGroup = {
       group: string;
@@ -771,8 +727,33 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
     return result;
   }, [pathname, setIsComposeOpen, quickFilterOptions]);
 
+  const filteredContacts = useMemo(() => {
+    if (!commandInputValue || commandInputValue.trim().length < 2) return [];
+    const term = commandInputValue.toLowerCase();
+    return prefetchedContacts
+      .filter(
+        (c: { email: string; name?: string | null }) =>
+          c.email.toLowerCase().includes(term) ||
+          (c.name && c.name.toLowerCase().includes(term)),
+      )
+      .slice(0, 5);
+  }, [commandInputValue, prefetchedContacts]);
+
+  const filteredSearchContacts = useMemo(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) return [];
+    const term = searchQuery.toLowerCase();
+    return prefetchedContacts
+      .filter(
+        (c: { email: string; name?: string | null }) =>
+          c.email.toLowerCase().includes(term) ||
+          (c.name && c.name.toLowerCase().includes(term)),
+      )
+      .slice(0, 5);
+  }, [searchQuery, prefetchedContacts]);
+
   const hasMatchingCommands = useMemo(() => {
     if (!commandInputValue.trim()) return true;
+    if (filteredContacts.length > 0) return true;
 
     const searchTerm = commandInputValue.toLowerCase();
 
@@ -785,7 +766,7 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
             item.keywords.some((keyword) => keyword.toLowerCase().includes(searchTerm))),
       ),
     );
-  }, [commandInputValue, allCommands]);
+  }, [commandInputValue, allCommands, filteredContacts]);
 
   const renderMainView = () => (
     <>
@@ -842,6 +823,51 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
             </>
           )}
         </CommandEmpty>
+        {filteredContacts.length > 0 && (
+          <>
+            <CommandGroup heading="People">
+              {filteredContacts.map((contact: { email: string; name?: string | null }) => (
+                <CommandItem
+                  key={`contact-${contact.email}`}
+                  value={`people ${contact.name || ''} ${contact.email}`}
+                  onSelect={() => {
+                    runCommand(() => {
+                      const filter: ActiveFilter = {
+                        id: `from-${Date.now()}`,
+                        type: 'from',
+                        value: `from:${contact.email}`,
+                        display: `From: ${contact.name || contact.email}`,
+                      };
+                      addFilter(filter);
+                      setSearchValue({
+                        value: `from:${contact.email}`,
+                        highlight: contact.name || contact.email,
+                        folder: searchValue.folder,
+                        isAISearching: false,
+                      });
+                    });
+                  }}
+                >
+                  <User
+                    size={16}
+                    strokeWidth={2}
+                    className="h-4 w-4 opacity-60"
+                    aria-hidden="true"
+                  />
+                  <div className="ml-2 flex flex-1 flex-col overflow-hidden">
+                    <span className="truncate">{contact.name || contact.email}</span>
+                    {contact.name && (
+                      <span className="text-muted-foreground truncate text-xs">
+                        {contact.email}
+                      </span>
+                    )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <Separator />
+          </>
+        )}
         {allCommands.map((group, groupIndex) => (
           <Fragment key={group.group}>
             {group.items.length > 0 && (
@@ -964,36 +990,51 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
             </CommandGroup>
           )}
 
-          {quickSearchResults.length > 0 && (
-            <CommandGroup heading="Quick Results">
-              {quickSearchResults.map((thread: any) => (
-                <CommandItem
-                  key={thread.id || `thread-${Math.random()}`}
-                  onSelect={() => {
-                    runCommand(() => {
-                      try {
-                        if (thread && thread.id) {
-                          navigate(`/inbox?threadId=${thread.id}`);
-                        }
-                      } catch (error) {
-                        console.error('Error navigating to thread:', error);
-                        toast.error('Failed to open email');
-                      }
-                    });
-                  }}
-                  disabled={isProcessing}
-                >
-                  <Mail className="h-4 w-4 opacity-60" />
-                  <div className="ml-2 flex flex-1 flex-col overflow-hidden">
-                    <span className="truncate font-medium">{thread.subject || 'No Subject'}</span>
-                    <span className="text-muted-foreground truncate text-xs">
-                      {thread.from?.name || thread.from?.email || 'Unknown sender'} -{' '}
-                      {thread.snippet || ''}
-                    </span>
-                  </div>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+          {filteredSearchContacts.length > 0 && (
+            <>
+              <CommandGroup heading="People">
+                {filteredSearchContacts.map((contact: { email: string; name?: string | null }) => (
+                  <CommandItem
+                    key={`search-contact-${contact.email}`}
+                    value={`people ${contact.name || ''} ${contact.email}`}
+                    onSelect={() => {
+                      runCommand(() => {
+                        const filter: ActiveFilter = {
+                          id: `from-${Date.now()}`,
+                          type: 'from',
+                          value: `from:${contact.email}`,
+                          display: `From: ${contact.name || contact.email}`,
+                        };
+                        addFilter(filter);
+                        setSearchValue({
+                          value: `from:${contact.email}`,
+                          highlight: contact.name || contact.email,
+                          folder: searchValue.folder,
+                          isAISearching: false,
+                        });
+                      });
+                    }}
+                    disabled={isProcessing}
+                  >
+                    <User
+                      size={16}
+                      strokeWidth={2}
+                      className="h-4 w-4 opacity-60"
+                      aria-hidden="true"
+                    />
+                    <div className="ml-2 flex flex-1 flex-col overflow-hidden">
+                      <span className="truncate">{contact.name || contact.email}</span>
+                      {contact.name && (
+                        <span className="text-muted-foreground truncate text-xs">
+                          {contact.email}
+                        </span>
+                      )}
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <Separator />
+            </>
           )}
 
           {searchQuery && (
@@ -1251,32 +1292,6 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
                     );
                   })}
 
-                  {['from', 'to'].includes(searchQuery) &&
-                    emailSuggestions
-                      .filter((email) => email.toLowerCase().includes(searchQuery.toLowerCase()))
-                      .slice(0, 5)
-                      .map((email) => (
-                        <CommandItem
-                          key={`suggestion-${email}`}
-                          onSelect={() => {
-                            const filter = filterOptions.find((f) => f.id === 'from');
-                            if (filter) {
-                              const newQuery = filter.action(email);
-                              const activeFilter: ActiveFilter = {
-                                id: `filter-${Date.now()}`,
-                                type: 'from',
-                                value: newQuery,
-                                display: `From: ${email}`,
-                              };
-                              addFilter(activeFilter);
-                              executeSearch(newQuery);
-                            }
-                          }}
-                        >
-                          <Mail className="h-4 w-4 opacity-60" />
-                          <span className="ml-2 text-xs">{email}</span>
-                        </CommandItem>
-                      ))}
                 </CommandGroup>
               </>
             )}
