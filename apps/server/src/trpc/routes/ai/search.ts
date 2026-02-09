@@ -2,8 +2,8 @@ import {
   GmailSearchAssistantSystemPrompt,
   OutlookSearchAssistantSystemPrompt,
 } from '../../../lib/prompts';
+import { resolveAIClient, getSummarizationModel } from '../../../lib/ai-client-resolver';
 import { activeDriverProcedure } from '../../trpc';
-import { openai } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
 import { env } from '../../../env';
 import { z } from 'zod';
@@ -21,8 +21,11 @@ export const generateSearchQuery = activeDriverProcedure
           ? OutlookSearchAssistantSystemPrompt()
           : '';
 
+    const aiConfig = await resolveAIClient(ctx.sessionUser.id, env);
+    const model = getSummarizationModel(aiConfig);
+
     const result = await generateObject({
-      model: openai(env.OPENAI_MODEL || 'gpt-4o'),
+      model,
       system: systemPrompt,
       prompt: input.query,
       schema: z.object({
