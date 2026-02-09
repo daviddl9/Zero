@@ -13,6 +13,21 @@ import type { connection } from '../db/schema';
  * StandaloneAgentStub - The stub interface that matches what server-utils expects
  * This is accessed as agent.stub.methodName()
  */
+interface RecipientSuggestion {
+  email: string;
+  name: string | null;
+  displayText: string;
+}
+
+interface RecipientCache {
+  contacts: RecipientSuggestion[];
+  timestamp: number;
+}
+
+// Module-level cache keyed by connection email, TTL 5 minutes
+const recipientCaches = new Map<string, RecipientCache>();
+const RECIPIENT_CACHE_TTL = 5 * 60 * 1000;
+
 export interface StandaloneAgentStub {
   // Methods that are no-ops or simplified in standalone mode
   forceReSync(): Promise<void>;
@@ -28,6 +43,7 @@ export interface StandaloneAgentStub {
     maxResults?: number;
     pageToken?: string;
   }): Promise<IGetThreadsResponse>;
+  suggestRecipients(query: string, limit: number): Promise<RecipientSuggestion[]>;
   // Direct driver methods also on the stub
   listDrafts: MailManager['listDrafts'];
   getDraft: MailManager['getDraft'];
@@ -109,6 +125,89 @@ export function createStandaloneAgent(
         labelIds: params.labelIds,
         pageToken: params.pageToken,
       });
+    },
+
+    async suggestRecipients(
+      query: string = '',
+      limit: number = 10,
+    ): Promise<RecipientSuggestion[]> {
+      const cacheKey = activeConnection.email;
+      const cached = recipientCaches.get(cacheKey);
+
+      if (cached && Date.now() - cached.timestamp < RECIPIENT_CACHE_TTL) {
+        const lower = query.toLowerCase();
+        const filtered = lower
+          ? cached.contacts.filter(
+              (c) =>
+                c.email.toLowerCase().includes(lower) ||
+                (c.name && c.name.toLowerCase().includes(lower)),
+            )
+          : cached.contacts;
+        return filtered.slice(0, limit);
+      }
+
+      // Fetch recent threads and extract senders
+      try {
+        const { threads } = await driver.list({
+          folder: 'INBOX',
+          maxResults: 30,
+        });
+
+        const senderMap = new Map<
+          string,
+          { email: string; name: string | null; count: number }
+        >();
+
+        // Fetch thread details in parallel (batches of 5 to avoid rate limits)
+        const batchSize = 5;
+        for (let i = 0; i < threads.length; i += batchSize) {
+          const batch = threads.slice(i, i + batchSize);
+          const results = await Promise.allSettled(
+            batch.map((t) => driver.get(t.id)),
+          );
+          for (const result of results) {
+            if (result.status !== 'fulfilled') continue;
+            const thread = result.value;
+            for (const msg of thread.messages) {
+              const from = msg.sender;
+              if (!from?.email) continue;
+              const key = from.email.toLowerCase();
+              if (!senderMap.has(key)) {
+                senderMap.set(key, {
+                  email: from.email,
+                  name: from.name || null,
+                  count: 1,
+                });
+              } else {
+                senderMap.get(key)!.count += 1;
+              }
+            }
+          }
+        }
+
+        const contacts: RecipientSuggestion[] = Array.from(senderMap.values())
+          .sort((a, b) => b.count - a.count)
+          .map((c) => ({
+            email: c.email,
+            name: c.name,
+            displayText: c.name ? `${c.name} <${c.email}>` : c.email,
+          }));
+
+        recipientCaches.set(cacheKey, { contacts, timestamp: Date.now() });
+
+        const lower = query.toLowerCase();
+        const filtered = lower
+          ? contacts.filter(
+              (c) =>
+                c.email.toLowerCase().includes(lower) ||
+                (c.name && c.name.toLowerCase().includes(lower)),
+            )
+          : contacts;
+        return filtered.slice(0, limit);
+      } catch (error) {
+        console.error('[StandaloneAgent] suggestRecipients error:', error);
+        return [];
+      }
     },
 
     // Direct driver methods
