@@ -432,22 +432,18 @@ export class GoogleMailManager implements MailManager {
                   (h) => h.name?.toLowerCase() === 'content-id',
                 )?.value;
                 if (contentId && part.body?.attachmentId) {
-                  try {
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    const imageData = await this.getAttachment(message.id!, part.body.attachmentId);
-                    if (imageData) {
-                      const cleanContentId = contentId.replace(/[<>]/g, '');
-
-                      const escapedContentId = cleanContentId.replace(
-                        /[.*+?^${}()|[\]\\]/g,
-                        '\\$&',
-                      );
-                      processedBody = processedBody.replace(
-                        new RegExp(`cid:${escapedContentId}`, 'g'),
-                        `data:${part.mimeType};base64,${imageData}`,
-                      );
-                    }
-                  } catch {}
+                  const cleanContentId = contentId.replace(/[<>]/g, '');
+                  const escapedContentId = cleanContentId.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    '\\$&',
+                  );
+                  // Use proxy URL instead of fetching inline — browser loads lazily
+                  // Path starts with /api/ so nginx routes it to the backend
+                  const proxyUrl = `/api/attachments/${message.id}/${part.body.attachmentId}?mimeType=${encodeURIComponent(part.mimeType || 'image/png')}`;
+                  processedBody = processedBody.replace(
+                    new RegExp(`cid:${escapedContentId}`, 'g'),
+                    proxyUrl,
+                  );
                 }
               }
             }

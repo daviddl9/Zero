@@ -77,6 +77,7 @@ import { createDriver } from './lib/driver';
 import { publicRouter } from './routes/auth';
 import { autumnApi } from './routes/autumn';
 import { aiRouter } from './routes/ai';
+import { attachmentsRouter } from './routes/attachments';
 import { appRouter } from './trpc';
 
 // Types
@@ -469,6 +470,9 @@ async function main() {
 
   // AI routes
   app.route('/ai', aiRouter);
+
+  // Attachment proxy routes (inline images loaded lazily by the browser)
+  app.route('/attachments', attachmentsRouter);
 
   // Autumn (billing) routes
   app.route('/autumn', autumnApi);

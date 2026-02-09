@@ -618,9 +618,10 @@ const MoreAboutQuery = ({
 };
 
 const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }: Props) => {
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(!demo && totalEmails ? index !== totalEmails - 1 : false);
+  const [hasBeenExpanded, setHasBeenExpanded] = useState(!isCollapsed);
   const { data: threadData } = useThread(emailData.threadId ?? null);
-  const { data: messageAttachments } = useAttachments(emailData.id);
+  const { data: messageAttachments } = useAttachments(isCollapsed ? '' : emailData.id);
   //   const [unsubscribed, setUnsubscribed] = useState(false);
   //   const [isUnsubscribing, setIsUnsubscribing] = useState(false);
   const [preventCollapse, setPreventCollapse] = useState(false);
@@ -673,6 +674,10 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
       }
     }
   }, [demo, emailData.id, isLastEmail, activeReplyId]);
+
+  useEffect(() => {
+    if (!isCollapsed) setHasBeenExpanded(true);
+  }, [isCollapsed]);
 
   //   const listUnsubscribeAction = useMemo(
   //     () =>
@@ -1601,6 +1606,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
 
           <div className={cn('h-0 overflow-hidden duration-200', !isCollapsed && 'h-px')}></div>
 
+          {hasBeenExpanded && (
           <div
             className={cn(
               'grid overflow-hidden duration-200',
@@ -1689,6 +1695,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
               </div>
             </div>
           </div>
+          )}
         </div>
       </>
     </div>

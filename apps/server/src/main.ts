@@ -59,6 +59,7 @@ import type { HonoContext } from './ctx';
 import { createDb, type DB } from './db';
 import { createAuth } from './lib/auth';
 import { aiRouter } from './routes/ai';
+import { attachmentsRouter } from './routes/attachments';
 import { appRouter } from './trpc';
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
@@ -1239,6 +1240,7 @@ const api = new Hono<HonoContext>()
     c.set('auth', undefined as any);
   })
   .route('/ai', aiRouter)
+  .route('/attachments', attachmentsRouter)
   .route('/autumn', autumnApi)
   .route('/public', publicRouter)
   .on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {

@@ -1019,35 +1019,65 @@ const MessageList = ({
   mode,
   activeReplyId,
   isMobile,
-}: MessageListProps) => (
-  <ScrollArea className={cn('flex-1', isMobile ? 'h-[calc(100%-1px)]' : 'h-full')} type="auto">
-    <div className="pb-4">
-      {(messages || []).map((message, index) => {
-        const isLastMessage = index === messages.length - 1;
-        const isReplyingToThisMessage = mode && activeReplyId === message.id;
+}: MessageListProps) => {
+  const [showAll, setShowAll] = useState(false);
+  const shouldCollapse = messages.length > 5 && !showAll;
 
-        return (
-          <div
-            key={message.id}
-            className={cn('duration-200', index > 0 && 'border-border border-t')}
-          >
-            <MailDisplay
-              emailData={message}
-              isFullscreen={isFullscreen}
-              isMuted={false}
-              isLoading={false}
-              index={index}
-              totalEmails={totalReplies}
-              threadAttachments={index === 0 ? allThreadAttachments : undefined}
-            />
-            {isReplyingToThisMessage && !isLastMessage && (
-              <div className="px-4 py-2" id={`reply-composer-${message.id}`}>
-                <ReplyCompose messageId={message.id} />
+  // Show first message + last 2, hide the middle ones
+  const visibleMessages = shouldCollapse
+    ? [messages[0], ...messages.slice(-2)]
+    : messages;
+  const hiddenCount = messages.length - visibleMessages.length;
+
+  return (
+    <ScrollArea className={cn('flex-1', isMobile ? 'h-[calc(100%-1px)]' : 'h-full')} type="auto">
+      <div className="pb-4">
+        {visibleMessages.map((message, visibleIndex) => {
+          // Map visible index back to the original index for correct collapse behavior
+          const originalIndex = shouldCollapse
+            ? visibleIndex === 0
+              ? 0
+              : messages.length - (visibleMessages.length - visibleIndex)
+            : visibleIndex;
+          const isLastMessage = originalIndex === messages.length - 1;
+          const isReplyingToThisMessage = mode && activeReplyId === message.id;
+
+          return (
+            <div key={message.id}>
+              {/* Show "N older messages" button after the first message */}
+              {shouldCollapse && visibleIndex === 1 && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="border-border text-muted-foreground hover:bg-muted/50 flex w-full items-center justify-center border-t py-2 text-sm transition-colors"
+                >
+                  Show {hiddenCount} older message{hiddenCount !== 1 ? 's' : ''}
+                </button>
+              )}
+              <div
+                className={cn(
+                  'duration-200',
+                  visibleIndex > 0 && 'border-border border-t',
+                )}
+              >
+                <MailDisplay
+                  emailData={message}
+                  isFullscreen={isFullscreen}
+                  isMuted={false}
+                  isLoading={false}
+                  index={originalIndex}
+                  totalEmails={totalReplies}
+                  threadAttachments={originalIndex === 0 ? allThreadAttachments : undefined}
+                />
+                {isReplyingToThisMessage && !isLastMessage && (
+                  <div className="px-4 py-2" id={`reply-composer-${message.id}`}>
+                    <ReplyCompose messageId={message.id} />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  </ScrollArea>
-);
+            </div>
+          );
+        })}
+      </div>
+    </ScrollArea>
+  );
+};

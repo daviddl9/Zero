@@ -153,8 +153,8 @@ export function applyEmailPreferences(
       const $img = $(el);
       const src = $img.attr('src');
 
-      // Allow CID images (inline attachments)
-      if (src && !src.startsWith('cid:')) {
+      // Allow CID images and proxied inline attachments
+      if (src && !src.startsWith('cid:') && !src.startsWith('/api/attachments/')) {
         hasBlockedImages = true;
         $img.replaceWith(`<span style="display:none;"><!-- blocked image: ${src} --></span>`);
       }

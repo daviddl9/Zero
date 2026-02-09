@@ -56,6 +56,7 @@ export interface StandaloneAgentStub {
   rawListThreads: MailManager['list'];
   normalizeIds: MailManager['normalizeIds'];
   getEmailAliases: MailManager['getEmailAliases'];
+  getAttachment: MailManager['getAttachment'];
   getMessageAttachments: MailManager['getMessageAttachments'];
   getRawEmail: MailManager['getRawEmail'];
   getThread: MailManager['get'];
@@ -274,6 +275,7 @@ export function createStandaloneAgent(
     rawListThreads: driver.list.bind(driver),
     normalizeIds: driver.normalizeIds.bind(driver),
     getEmailAliases: driver.getEmailAliases.bind(driver),
+    getAttachment: driver.getAttachment.bind(driver),
     getMessageAttachments: driver.getMessageAttachments.bind(driver),
     getRawEmail: driver.getRawEmail.bind(driver),
     getThread: driver.get.bind(driver),
