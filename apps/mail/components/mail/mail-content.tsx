@@ -6,6 +6,7 @@ import { getBrowserTimezone } from '@/lib/timezones';
 import { useSettings } from '@/hooks/use-settings';
 import { m } from '@/paraglide/messages';
 import { useTheme } from 'next-themes';
+import { cleanHtml } from '@/lib/email-utils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -101,10 +102,17 @@ export function MailContent({ id, html, senderEmail }: MailContentProps) {
   }, []);
 
   useEffect(() => {
-    if (!shadowRootRef.current || !processedData) return;
+    if (!shadowRootRef.current) return;
 
-    shadowRootRef.current.innerHTML = processedData.html;
-  }, [processedData]);
+    if (processedData) {
+      shadowRootRef.current.innerHTML = processedData.html;
+    } else if (html) {
+      const themeStyles = resolvedTheme === 'dark'
+        ? 'color: #e5e7eb; background: transparent;'
+        : 'color: #1f2937; background: transparent;';
+      shadowRootRef.current.innerHTML = `<div style="${themeStyles}">${cleanHtml(html)}</div>`;
+    }
+  }, [processedData, html, resolvedTheme]);
 
   const handleImageError = useCallback(
     (e: Event) => {

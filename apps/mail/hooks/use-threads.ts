@@ -68,7 +68,7 @@ export const useThread = (threadId: string | null) => {
   const id = threadId ? threadId : _threadId;
   const trpc = useTRPC();
   const { data: settings } = useSettings();
-  const { theme: systemTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   const threadQuery = useQuery(
     trpc.mail.get.queryOptions(
@@ -137,14 +137,12 @@ export const useThread = (threadId: string | null) => {
       'email-content',
       latestMessage?.id,
       shouldLoadImages,
-      systemTheme,
+      resolvedTheme,
     ],
     queryFn: async () => {
       if (!latestMessage?.decodedBody || !settings?.settings) return null;
 
-      const userTheme =
-        settings.settings.colorTheme === 'system' ? systemTheme : settings.settings.colorTheme;
-      const theme = userTheme === 'dark' ? 'dark' : 'light';
+      const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
 
       const result = await processEmailContent({
         html: latestMessage.decodedBody,
