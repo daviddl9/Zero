@@ -551,7 +551,18 @@ const Thread = memo(
           {content}
         </ThreadContextMenu>
       ) : null
-    ) : null;
+    ) : (
+      <div className="mx-1 flex items-center gap-4 rounded-lg px-4 py-2">
+        <Skeleton className="h-8 w-8 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+          <Skeleton className="h-3.5 w-3/4" />
+        </div>
+      </div>
+    );
   },
   (prev, next) => {
     const isSameMessage =
@@ -980,7 +991,7 @@ export const MailList = memo(
                 <VList
                   ref={vListRef}
                   count={filteredItems.length}
-                  overscan={5}
+                  overscan={15}
                   itemSize={100}
                   className="scrollbar-none flex-1 overflow-x-hidden"
                   onScroll={() => {
@@ -988,10 +999,9 @@ export const MailList = memo(
                     const endIndex = vListRef.current.findEndIndex();
                     if (
                       // if the shown items are last 5 items, load more
-                      Math.abs(filteredItems.length - 1 - endIndex) < 7 &&
+                      Math.abs(filteredItems.length - 1 - endIndex) < 20 &&
                       !isLoading &&
                       !isFetchingNextPage &&
-                      !isFetchingMail &&
                       hasNextPage
                     ) {
                       void loadMore();
