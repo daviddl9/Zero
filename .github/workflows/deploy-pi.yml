@@ -33,8 +33,19 @@ jobs:
           echo "Migrations completed"
 
 
-      - name: Cleanup old images
-        run: docker image prune -f
+      - name: Cleanup Docker disk space
+        run: |
+          # Always remove dangling images and build cache not used in the last 24h
+          docker image prune -f
+          docker builder prune -f --filter "until=24h"
+
+          # If disk usage exceeds 70%, do an aggressive cleanup
+          USAGE=$(df / --output=pcent | tail -1 | tr -d ' %')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage above 70%, running aggressive cleanup..."
+            docker system prune -a -f --filter "until=48h"
+          fi
 
       - name: Wait for services to be healthy
         run: |
