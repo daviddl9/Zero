@@ -7,11 +7,15 @@ FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # ========================================
-# Build Stage
+# Build & Run Stage (single stage for faster Pi builds)
 # ========================================
-FROM base AS builder
+FROM base AS production
 
 WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 zero
 
 # Copy package files for dependency installation
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -30,34 +34,8 @@ COPY tsconfig.json ./
 WORKDIR /app/apps/server
 RUN pnpm run build:standalone
 
-# ========================================
-# Production Stage
-# ========================================
-FROM base AS production
-
+# Back to root for ownership
 WORKDIR /app
-
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 zero
-
-# Copy package files
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/server/package.json apps/server/
-
-# Copy packages and patches (for workspace dependencies)
-COPY --from=builder /app/packages packages/
-COPY --from=builder /app/patches patches/
-
-# Install all dependencies (same as before, avoids chown differences)
-# Skip postinstall which needs full workspace context
-RUN pnpm install --frozen-lockfile --ignore-scripts
-
-# Copy compiled server bundle (not source code)
-COPY --from=builder /app/apps/server/dist apps/server/dist
-
-# Copy drizzle migrations (needed for db:migrate at runtime)
-COPY --from=builder /app/apps/server/src/db/migrations apps/server/src/db/migrations
 
 # Set ownership
 RUN chown -R zero:nodejs /app
