@@ -11,7 +11,7 @@ import { ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useCommandPalette } from '../context/command-palette-context';
 import { useHotkeys, useHotkeysContext } from 'react-hotkeys-hook';
 import { ThreadDisplay } from '@/components/mail/thread-display';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useActiveConnection } from '@/hooks/use-connections';
 import { Check, ChevronDown, RefreshCcw } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/use-media-query';
@@ -22,7 +22,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useMail } from '@/components/mail/use-mail';
 import { SidebarToggle } from '../ui/sidebar-toggle';
 import { clearBulkSelectionAtom } from './use-mail';
-import AISidebar from '@/components/ui/ai-sidebar';
+const AISidebar = lazy(() => import('@/components/ui/ai-sidebar'));
 import { useThreads } from '@/hooks/use-threads';
 import AIToggleButton from '../ai-toggle-button';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -567,7 +567,11 @@ export function MailLayout() {
             </div>
           )}
 
-          {activeConnection?.id ? <AISidebar /> : null}
+          {activeConnection?.id ? (
+            <Suspense fallback={null}>
+              <AISidebar />
+            </Suspense>
+          ) : null}
           {activeConnection?.id ? <AIToggleButton /> : null}
         </ResizablePanelGroup>
       </div>

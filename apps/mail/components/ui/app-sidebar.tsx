@@ -15,7 +15,7 @@ import { PencilCompose } from '../icons/icons';
 import { useIsMobile } from '@/hooks/use-mobile';
 import React, { useMemo } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { useAIFullScreen } from './ai-sidebar';
+import { useAIFullScreen } from './ai-sidebar-hooks';
 import { useStats } from '@/hooks/use-stats';
 import { useLocation } from 'react-router';
 import { cn, FOLDERS } from '@/lib/utils';

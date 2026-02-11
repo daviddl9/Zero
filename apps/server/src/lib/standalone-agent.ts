@@ -5,6 +5,7 @@
  * without Cloudflare Durable Objects. Uses the mail driver directly for API calls.
  */
 
+import { getCachedThreadList, setCachedThreadList } from './thread-list-cache';
 import { createDriver } from './driver';
 import type { IGetThreadsResponse, MailManager } from './driver/types';
 import type { connection } from '../db/schema';
@@ -118,14 +119,23 @@ export function createStandaloneAgent(
       maxResults?: number;
       pageToken?: string;
     }): Promise<IGetThreadsResponse> {
-      // In standalone mode, query the Gmail API directly instead of a local cache
-      return driver.list({
+      // Try Redis cache first
+      const cached = await getCachedThreadList(activeConnection.id, params);
+      if (cached) return cached;
+
+      // Cache miss — fetch from Gmail API
+      const result = await driver.list({
         folder: params.folder || 'INBOX',
         query: params.q,
         maxResults: params.maxResults,
         labelIds: params.labelIds,
         pageToken: params.pageToken,
       });
+
+      // Store in cache (non-blocking, 60s TTL)
+      setCachedThreadList(activeConnection.id, params, result);
+
+      return result;
     },
 
     async suggestRecipients(

@@ -26,10 +26,9 @@ RUN pnpm install --frozen-lockfile
 COPY apps/server/ apps/server/
 COPY tsconfig.json ./
 
-# Build the server (compile TypeScript)
-# Note: For standalone mode, we run directly with tsx
-# WORKDIR /app/apps/server
-# RUN pnpm run build
+# Build the server (compile TypeScript to JavaScript with esbuild)
+WORKDIR /app/apps/server
+RUN pnpm run build:standalone
 
 # ========================================
 # Production Stage
@@ -50,14 +49,14 @@ COPY apps/server/package.json apps/server/
 COPY --from=builder /app/packages packages/
 COPY --from=builder /app/patches patches/
 
-# Install all dependencies (tsx needed for start:standalone script)
-# Skip postinstall which needs full workspace context
-RUN pnpm install --frozen-lockfile --ignore-scripts
+# Install production dependencies only (tsx no longer needed at runtime)
+RUN pnpm install --frozen-lockfile --ignore-scripts --prod
 
-# Copy server source code
-COPY --from=builder /app/apps/server/src apps/server/src
-COPY --from=builder /app/apps/server/tsconfig.json apps/server/
-COPY --from=builder /app/tsconfig.json ./
+# Copy compiled server bundle (not source code)
+COPY --from=builder /app/apps/server/dist apps/server/dist
+
+# Copy drizzle migrations (needed for db:migrate at runtime)
+COPY --from=builder /app/apps/server/src/db/migrations apps/server/src/db/migrations
 
 # Set ownership
 RUN chown -R zero:nodejs /app
@@ -77,6 +76,6 @@ ENV NODE_ENV=production
 ENV SELF_HOSTED=true
 ENV STANDALONE=true
 
-# Start the standalone server
+# Start the compiled standalone server
 WORKDIR /app/apps/server
-CMD ["pnpm", "run", "start:standalone"]
+CMD ["node", "dist/standalone.mjs"]

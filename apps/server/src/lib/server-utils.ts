@@ -10,6 +10,7 @@ import { createDb } from '../db';
 import { Effect } from 'effect';
 import { isSelfHostedMode } from './self-hosted';
 import { createStandaloneAgent } from './standalone-agent';
+import { invalidateThreadListCache } from './thread-list-cache';
 import { getStandaloneDb } from './standalone-server-utils';
 
 /**
@@ -409,6 +410,8 @@ export const modifyThreadLabelsInDB = async (
   if (isSelfHostedMode()) {
     const agent = await getZeroAgent(connectionId);
     await agent.stub.modifyLabels([threadId], { addLabels, removeLabels });
+    // Invalidate thread list cache so next load reflects the change
+    invalidateThreadListCache(connectionId).catch(() => {});
     return;
   }
 

@@ -56,6 +56,9 @@ import {
 // Database schema
 import * as schema from './db/schema';
 
+// Thread list cache
+import { initThreadListCache } from './lib/thread-list-cache';
+
 // Standalone modules
 import { standaloneEnv } from './lib/standalone-env';
 import { createStandaloneAuth, type StandaloneAuth } from './lib/standalone-auth';
@@ -171,6 +174,9 @@ async function main() {
   // Initialize Redis
   console.log('[Standalone] Connecting to Redis...');
   const redis = initializeRedis(config.redisHost, config.redisPort, config.redisPassword);
+
+  // Initialize thread list cache (Redis-backed, for fast inbox loads)
+  initThreadListCache(redis);
 
   // Initialize KV stores
   const kvFactory = new KVStoreFactory(redis);
