@@ -51,6 +51,10 @@ COPY nginx.standalone.conf /etc/nginx/nginx.conf
 # Copy built frontend from builder
 COPY --from=builder /app/apps/mail/build/client /usr/share/nginx/html
 
+# Pre-compress static assets for nginx gzip_static (zero CPU at serve time)
+RUN find /usr/share/nginx/html/assets -type f \( -name "*.js" -o -name "*.css" -o -name "*.wasm" \) \
+    -exec gzip -9 -k {} \;
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget --spider --quiet http://127.0.0.1:80/health || exit 1
