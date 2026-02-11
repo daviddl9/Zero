@@ -1,7 +1,4 @@
-// @ts-ignore - using default import for Node.js ESM compatibility
-import CssSanitizerModule from '@barkleapp/css-sanitizer';
-// Handle both named export and default export scenarios
-const CssSanitizer = (CssSanitizerModule as any).CssSanitizer || CssSanitizerModule;
+import { CssSanitizer } from '@barkleapp/css-sanitizer';
 import sanitizeHtml from 'sanitize-html';
 import * as cheerio from 'cheerio';
 
