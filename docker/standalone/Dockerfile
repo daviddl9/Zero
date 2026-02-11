@@ -11,6 +11,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 zero
 
 WORKDIR /app
+RUN chown zero:nodejs /app
 
 # Copy package files for dependency installation
 COPY --chown=zero:nodejs package.json pnpm-lock.yaml pnpm-workspace.yaml ./
