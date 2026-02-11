@@ -417,6 +417,22 @@ export class OutlookMailManager implements MailManager {
       { id, email: this.config.auth?.email },
     );
   }
+  public async getThreadLabels(threadId: string): Promise<string[]> {
+    return this.withErrorHandler(
+      'getThreadLabels',
+      async () => {
+        const message: Message = await this.graphClient
+          .api(`/me/messages/${threadId}`)
+          .select('categories,inferenceClassification,isRead')
+          .get();
+        const labels: string[] = [];
+        if (message.categories) labels.push(...message.categories);
+        if (message.inferenceClassification === 'focused') labels.push('IMPORTANT');
+        return labels;
+      },
+      { threadId },
+    );
+  }
   public create(data: IOutgoingMessage) {
     return this.withErrorHandler(
       'create',

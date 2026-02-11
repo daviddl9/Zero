@@ -3,6 +3,7 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { reactRouter } from '@react-router/dev/vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import oxlintPlugin from 'vite-plugin-oxlint';
+import compression from 'vite-plugin-compression';
 import babel from 'vite-plugin-babel';
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from 'vite';
@@ -53,6 +54,8 @@ export default defineConfig({
       outdir: './paraglide',
       strategy: ['cookie', 'baseLocale'],
     }),
+    // Pre-compress static assets at build time for nginx gzip_static
+    compression({ algorithm: 'gzip' }),
   ],
   server: {
     port: 3000,

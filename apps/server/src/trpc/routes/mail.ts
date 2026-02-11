@@ -18,7 +18,8 @@ import {
 import { updateWritingStyleMatrix } from '../../services/writing-style-service';
 import type { DeleteAllSpamResponse, IEmailSendBatch } from '../../types';
 import { activeDriverProcedure, router, privateProcedure } from '../trpc';
-import { processEmailHtml } from '../../lib/email-processor';
+import { preprocessEmailHtml, applyEmailPreferences } from '../../lib/email-processor';
+import { getCachedPreprocessedHtml, setCachedPreprocessedHtml } from '../../lib/email-html-cache';
 import { defaultPageSize, FOLDERS } from '../../lib/utils';
 import { toAttachmentFiles } from '../../lib/attachments';
 import { serializedFileSchema } from '../../lib/schemas';
@@ -291,23 +292,18 @@ export const mailRouter = router({
         return { success: false, error: 'No thread IDs provided' };
       }
 
-      const threadResults = await Promise.allSettled(
-        threadIds.map(async (id: string) => {
-          const thread = await getThread(activeConnection.id, id);
-          return thread.result;
-        }),
+      // Use lightweight getThreadLabels (format: minimal) instead of full thread fetch
+      const labelResults = await Promise.allSettled(
+        threadIds.map((id: string) => agent.getThreadLabels(id)),
       );
 
       let anyStarred = false;
       let processedThreads = 0;
 
-      for (const result of threadResults) {
-        if (result.status === 'fulfilled' && result.value && result.value.messages.length > 0) {
+      for (const result of labelResults) {
+        if (result.status === 'fulfilled' && result.value) {
           processedThreads++;
-          const isThreadStarred = result.value.messages.some((message) =>
-            message.tags?.some((tag) => tag.name.toLowerCase().startsWith('starred')),
-          );
-          if (isThreadStarred) {
+          if (result.value.includes('STARRED')) {
             anyStarred = true;
             break;
           }
@@ -345,23 +341,18 @@ export const mailRouter = router({
         return { success: false, error: 'No thread IDs provided' };
       }
 
-      const threadResults = await Promise.allSettled(
-        threadIds.map(async (id: string) => {
-          const thread = await getThread(activeConnection.id, id);
-          return thread.result;
-        }),
+      // Use lightweight getThreadLabels (format: minimal) instead of full thread fetch
+      const labelResults = await Promise.allSettled(
+        threadIds.map((id: string) => agent.getThreadLabels(id)),
       );
 
       let anyImportant = false;
       let processedThreads = 0;
 
-      for (const result of threadResults) {
-        if (result.status === 'fulfilled' && result.value && result.value.messages.length > 0) {
+      for (const result of labelResults) {
+        if (result.status === 'fulfilled' && result.value) {
           processedThreads++;
-          const isThreadImportant = result.value.messages.some((message) =>
-            message.tags?.some((tag) => tag.name.toLowerCase().startsWith('important')),
-          );
-          if (isThreadImportant) {
+          if (result.value.includes('IMPORTANT')) {
             anyImportant = true;
             break;
           }
@@ -829,11 +820,19 @@ export const mailRouter = router({
     )
     .mutation(async ({ input }) => {
       try {
-        const { processedHtml, hasBlockedImages } = processEmailHtml({
-          html: input.html,
-          shouldLoadImages: input.shouldLoadImages,
-          theme: input.theme,
-        });
+        // Check Redis cache for the expensive preprocess step
+        let preprocessed = await getCachedPreprocessedHtml(input.html);
+        if (!preprocessed) {
+          preprocessed = preprocessEmailHtml(input.html);
+          setCachedPreprocessedHtml(input.html, preprocessed);
+        }
+
+        // Apply cheap per-request preferences (theme CSS + image blocking)
+        const { processedHtml, hasBlockedImages } = applyEmailPreferences(
+          preprocessed,
+          input.theme,
+          input.shouldLoadImages,
+        );
 
         return {
           processedHtml,

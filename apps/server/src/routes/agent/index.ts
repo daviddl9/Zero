@@ -765,6 +765,13 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     return await this.getThreadFromDB(threadId, includeDrafts);
   }
 
+  async getThreadLabels(threadId: string): Promise<string[]> {
+    if (!this.driver) {
+      throw new Error('No driver available');
+    }
+    return await this.driver.getThreadLabels(threadId);
+  }
+
   //   async markThreadsRead(threadIds: string[]) {
   //     if (!this.driver) {
   //       throw new Error('No driver available');

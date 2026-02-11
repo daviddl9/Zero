@@ -502,6 +502,24 @@ export class GoogleMailManager implements MailManager {
       { id, email: this.config.auth?.email },
     );
   }
+  public async getThreadLabels(threadId: string): Promise<string[]> {
+    return this.withErrorHandler(
+      'getThreadLabels',
+      async () => {
+        const res = await this.gmail.users.threads.get({
+          userId: 'me',
+          id: threadId,
+          format: 'minimal',
+        });
+        const labels = new Set<string>();
+        for (const msg of res.data.messages ?? []) {
+          for (const label of msg.labelIds ?? []) labels.add(label);
+        }
+        return Array.from(labels);
+      },
+      { threadId },
+    );
+  }
   public create(data: IOutgoingMessage) {
     return this.withErrorHandler(
       'create',
@@ -644,7 +662,8 @@ export class GoogleMailManager implements MailManager {
               const msg = await this.gmail.users.drafts.get({
                 userId: 'me',
                 id: draft.id,
-                format: 'full',
+                format: 'metadata',
+                metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Date'],
               });
               const message = msg.data.message;
               if (!message) return null;

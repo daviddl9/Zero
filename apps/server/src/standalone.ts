@@ -59,6 +59,9 @@ import * as schema from './db/schema';
 // Thread list cache
 import { initThreadListCache } from './lib/thread-list-cache';
 
+// Email HTML preprocessing cache
+import { initEmailHtmlCache } from './lib/email-html-cache';
+
 // Standalone modules
 import { standaloneEnv } from './lib/standalone-env';
 import { createStandaloneAuth, type StandaloneAuth } from './lib/standalone-auth';
@@ -177,6 +180,9 @@ async function main() {
 
   // Initialize thread list cache (Redis-backed, for fast inbox loads)
   initThreadListCache(redis);
+
+  // Initialize email HTML preprocessing cache (Redis-backed, 24h TTL)
+  initEmailHtmlCache(redis);
 
   // Initialize KV stores
   const kvFactory = new KVStoreFactory(redis);

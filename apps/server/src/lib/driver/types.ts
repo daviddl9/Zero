@@ -101,6 +101,7 @@ export interface MailManager {
     id: string[],
     options: { addLabels: string[]; removeLabels: string[] },
   ): Promise<void>;
+  getThreadLabels(threadId: string): Promise<string[]>;
   getAttachment(messageId: string, attachmentId: string): Promise<string | undefined>;
   getUserLabels(): Promise<Label[]>;
   getLabel(id: string): Promise<Label>;
