@@ -15,9 +15,9 @@
     "eval": "evalite",
     "eval:dev": "evalite watch",
     "test:cron": "curl 'http://localhost:8787/cdn-cgi/handler/scheduled'",
-    "build:standalone": "esbuild src/standalone.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/standalone.mjs --sourcemap=external",
+    "build:standalone": "esbuild src/standalone.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --outfile=dist/standalone.cjs",
     "start:standalone": "tsx src/standalone.ts",
-    "start:standalone:prod": "node dist/standalone.mjs"
+    "start:standalone:prod": "node dist/standalone.cjs"
   },
   "exports": {
     "./trpc": "./src/trpc/index.ts",

@@ -78,4 +78,4 @@ ENV STANDALONE=true
 
 # Start the compiled standalone server
 WORKDIR /app/apps/server
-CMD ["node", "dist/standalone.mjs"]
+CMD ["node", "dist/standalone.cjs"]
