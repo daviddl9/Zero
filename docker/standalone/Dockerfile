@@ -49,8 +49,9 @@ COPY apps/server/package.json apps/server/
 COPY --from=builder /app/packages packages/
 COPY --from=builder /app/patches patches/
 
-# Install production dependencies only (tsx no longer needed at runtime)
-RUN pnpm install --frozen-lockfile --ignore-scripts --prod
+# Install all dependencies (same as before, avoids chown differences)
+# Skip postinstall which needs full workspace context
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy compiled server bundle (not source code)
 COPY --from=builder /app/apps/server/dist apps/server/dist
