@@ -263,6 +263,9 @@ importers:
       dedent:
         specifier: ^1.5.3
         version: 1.6.0
+      dexie:
+        specifier: 4.3.0
+        version: 4.3.0
       dompurify:
         specifier: ^3.2.5
         version: 3.2.6
@@ -299,6 +302,9 @@ importers:
       mimetext:
         specifier: ^3.0.27
         version: 3.0.27
+      minisearch:
+        specifier: 7.2.0
+        version: 7.2.0
       motion:
         specifier: 12.4.7
         version: 12.4.7(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6506,6 +6512,9 @@ packages:
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
 
+  dexie@4.3.0:
+    resolution: {integrity: sha512-5EeoQpJvMKHe6zWt/FSIIuRa3CWlZeIl6zKXt+Lz7BU6RoRRLgX9dZEynRfXrkLcldKYCBiz7xekTEylnie1Ug==}
+
   diff-sequences@29.6.3:
     resolution: {integrity: sha512-EjePK1srD3P08o2j4f0ExnylqRs5B9tJjcp9t1krH2qRi8CCdsYfwe9JgSLurFBWwq4uOlipzfk5fHNvwFKr8Q==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
@@ -8390,6 +8399,9 @@ packages:
   minipass@7.1.2:
     resolution: {integrity: sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==}
     engines: {node: '>=16 || 14 >=14.17'}
+
+  minisearch@7.2.0:
+    resolution: {integrity: sha512-dqT2XBYUOZOiC5t2HRnwADjhNS2cecp9u+TJRiJ1Qp/f5qjkeT5APcGPjHw+bz89Ms8Jp+cG4AlE+QZ/QnDglg==}
 
   minizlib@3.0.2:
     resolution: {integrity: sha512-oG62iEk+CYt5Xj2YqI5Xi9xWUeZhDI8jjQmC5oThVH5JGCTgIjr7ciJDzC7MBzYd//WvR1OTmP5Q38Q8ShQtVA==}
@@ -17140,6 +17152,8 @@ snapshots:
     dependencies:
       dequal: 2.0.3
 
+  dexie@4.3.0: {}
+
   diff-sequences@29.6.3: {}
 
   doctrine@2.1.0:
@@ -19399,6 +19413,8 @@ snapshots:
   minipass@4.2.8: {}
 
   minipass@7.1.2: {}
+
+  minisearch@7.2.0: {}
 
   minizlib@3.0.2:
     dependencies:

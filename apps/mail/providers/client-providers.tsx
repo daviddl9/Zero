@@ -1,5 +1,6 @@
 import { useKeyboardLayout } from '@/components/keyboard-layout-indicator';
 import { LoadingProvider } from '@/components/context/loading-context';
+import { SearchIndexProvider } from '@/lib/search';
 import { NuqsAdapter } from 'nuqs/adapters/react-router/v7';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { PostHogProvider } from '@/lib/posthog-provider';
@@ -27,7 +28,9 @@ export function ClientProviders({ children }: PropsWithChildren) {
           <SidebarProvider>
             <PostHogProvider>
               <LoadingProvider>
-                {children}
+                <SearchIndexProvider>
+                  {children}
+                </SearchIndexProvider>
                 <Toaster />
               </LoadingProvider>
             </PostHogProvider>
