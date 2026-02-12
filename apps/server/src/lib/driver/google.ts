@@ -355,6 +355,91 @@ export class GoogleMailManager implements MailManager {
       { folder, q, maxResults, _labelIds, pageToken, email: this.config.auth?.email },
     );
   }
+  public listEnriched(params: {
+    folder: string;
+    query?: string;
+    maxResults?: number;
+    labelIds?: string[];
+    pageToken?: string;
+  }) {
+    return this.withErrorHandler(
+      'listEnriched',
+      async () => {
+        // 1. Get thread IDs using existing list()
+        const listResult = await this.list(params);
+
+        // 2. Batch fetch metadata in parallel (allSettled for fault tolerance)
+        const metadataResults = await Promise.allSettled(
+          listResult.threads.map((t) =>
+            this.gmail.users.threads.get({
+              userId: 'me',
+              id: t.id,
+              format: 'metadata',
+              metadataHeaders: ['From', 'Subject', 'Date', 'To', 'Cc'],
+              quotaUser: this.getQuotaUser(),
+            }),
+          ),
+        );
+
+        // 3. Parse and compute summaries
+        const enrichedThreads = listResult.threads.map((thread, i) => {
+          const result = metadataResults[i];
+          if (!result || result.status !== 'fulfilled' || !result.value.data.messages?.length) {
+            return thread; // Return unenriched thread on failure
+          }
+
+          const messages = result.value.data.messages;
+          let hasUnread = false;
+          let hasDraft = false;
+          const allLabels = new Set<string>();
+
+          for (const msg of messages) {
+            if (msg.labelIds?.includes('UNREAD')) hasUnread = true;
+            if (msg.labelIds?.includes('DRAFT')) hasDraft = true;
+            for (const label of msg.labelIds ?? []) allLabels.add(label);
+          }
+
+          // Find latest non-draft message for display, fall back to last message
+          const nonDraftMessages = messages.filter(
+            (msg) => !msg.labelIds?.includes('DRAFT'),
+          );
+          const latestMsg = nonDraftMessages.length > 0
+            ? nonDraftMessages[nonDraftMessages.length - 1]!
+            : messages[messages.length - 1]!;
+
+          const parsed = this.parse(latestMsg);
+
+          const totalRecipients = [
+            ...(parsed.to || []),
+            ...(parsed.cc || []),
+          ].length;
+
+          return {
+            ...thread,
+            subject: parsed.subject,
+            snippet: parsed.title,
+            sender: parsed.sender,
+            to: parsed.to,
+            cc: parsed.cc,
+            receivedOn: parsed.receivedOn,
+            tags: parsed.tags,
+            hasUnread,
+            totalReplies: nonDraftMessages.length,
+            labels: Array.from(allLabels).map((id) => ({ id, name: id })),
+            hasDraft,
+            isGroupThread: totalRecipients > 1,
+            threadId: latestMsg.threadId || thread.id,
+          };
+        });
+
+        return {
+          threads: enrichedThreads,
+          nextPageToken: listResult.nextPageToken,
+        };
+      },
+      { ...params, email: this.config.auth?.email },
+    );
+  }
   public get(id: string) {
     return this.withErrorHandler(
       'get',
@@ -1037,7 +1122,7 @@ export class GoogleMailManager implements MailManager {
 
     return { folder, q };
   }
-  private parse({
+  public parse({
     id,
     threadId,
     snippet,

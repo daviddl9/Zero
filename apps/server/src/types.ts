@@ -170,8 +170,26 @@ export interface MailListProps {
 
 export type MailSelectMode = 'mass' | 'range' | 'single' | 'selectAllBelow';
 
+export type ThreadMessage = {
+  id: string;
+  // Enrichment fields (optional — graceful fallback if absent)
+  subject?: string;
+  snippet?: string;
+  sender?: Sender;
+  to?: Sender[];
+  cc?: Sender[] | null;
+  receivedOn?: string;
+  tags?: { id: string; name: string; type: string }[];
+  hasUnread?: boolean;
+  totalReplies?: number;
+  labels?: { id: string; name: string }[];
+  hasDraft?: boolean;
+  isGroupThread?: boolean;
+  threadId?: string;
+};
+
 export type ThreadProps = {
-  message: { id: string };
+  message: ThreadMessage;
   selectMode: MailSelectMode;
   // TODO: enforce types instead of sprinkling "any"
   onClick?: (message: ParsedMessage) => () => void;

@@ -124,8 +124,8 @@ export function createStandaloneAgent(
       const cached = await getCachedThreadList(activeConnection.id, params);
       if (cached) return cached;
 
-      // Cache miss — fetch from Gmail API
-      const result = await driver.list({
+      // Cache miss — fetch from Gmail API with enriched metadata
+      const result = await driver.listEnriched({
         folder: params.folder || 'INBOX',
         query: params.q,
         maxResults: params.maxResults,

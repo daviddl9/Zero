@@ -81,10 +81,14 @@ export interface MailManager {
     maxResults?: number;
     labelIds?: string[];
     pageToken?: string | number;
-  }): Promise<{
-    threads: { id: string; historyId: string | null; $raw?: unknown }[];
-    nextPageToken: string | null;
-  }>;
+  }): Promise<IGetThreadsResponse>;
+  listEnriched(params: {
+    folder: string;
+    query?: string;
+    maxResults?: number;
+    labelIds?: string[];
+    pageToken?: string;
+  }): Promise<IGetThreadsResponse>;
   count(): Promise<{ count?: number; label?: string }[]>;
   getTokens(
     code: string,
@@ -120,18 +124,51 @@ export interface MailManager {
   getRawEmail(id: string): Promise<string>;
 }
 
+export interface ThreadSummary {
+  id: string;
+  historyId: string | null;
+  $raw?: unknown;
+  // Enrichment fields (optional — absent in Cloudflare mode)
+  subject?: string;
+  snippet?: string;
+  sender?: { name?: string; email: string };
+  to?: { name?: string; email: string }[];
+  cc?: { name?: string; email: string }[] | null;
+  receivedOn?: string;
+  tags?: { id: string; name: string; type: string }[];
+  hasUnread?: boolean;
+  totalReplies?: number;
+  labels?: { id: string; name: string }[];
+  hasDraft?: boolean;
+  isGroupThread?: boolean;
+  threadId?: string;
+}
+
 export interface IGetThreadsResponse {
-  threads: { id: string; historyId: string | null; $raw?: unknown }[];
+  threads: ThreadSummary[];
   nextPageToken: string | null;
 }
 
+const ThreadSummarySchema = z.object({
+  id: z.string(),
+  historyId: z.string().nullable(),
+  $raw: z.unknown().optional(),
+  subject: z.string().optional(),
+  snippet: z.string().optional(),
+  sender: z.object({ name: z.string().optional(), email: z.string() }).optional(),
+  to: z.array(z.object({ name: z.string().optional(), email: z.string() })).optional(),
+  cc: z.array(z.object({ name: z.string().optional(), email: z.string() })).nullable().optional(),
+  receivedOn: z.string().optional(),
+  tags: z.array(z.object({ id: z.string(), name: z.string(), type: z.string() })).optional(),
+  hasUnread: z.boolean().optional(),
+  totalReplies: z.number().optional(),
+  labels: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+  hasDraft: z.boolean().optional(),
+  isGroupThread: z.boolean().optional(),
+  threadId: z.string().optional(),
+});
+
 export const IGetThreadsResponseSchema = z.object({
-  threads: z.array(
-    z.object({
-      id: z.string(),
-      historyId: z.string().nullable(),
-      $raw: z.unknown().optional(),
-    }),
-  ),
+  threads: z.array(ThreadSummarySchema),
   nextPageToken: z.string().nullable(),
 });

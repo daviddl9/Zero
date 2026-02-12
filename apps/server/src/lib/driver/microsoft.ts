@@ -324,6 +324,16 @@ export class OutlookMailManager implements MailManager {
       },
     );
   }
+  public async listEnriched(params: {
+    folder: string;
+    query?: string;
+    maxResults?: number;
+    labelIds?: string[];
+    pageToken?: string;
+  }) {
+    // Outlook's list() already fetches full message data, so just delegate
+    return this.list(params);
+  }
   private getOutlookFolderId(folderName: string): string | undefined {
     switch (folderName.toLowerCase()) {
       case 'inbox':

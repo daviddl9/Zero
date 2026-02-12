@@ -25,7 +25,7 @@ import { ThreadContextMenu } from '@/components/context/thread-context';
 import { useOptimisticActions } from '@/hooks/use-optimistic-actions';
 import { useMail, type Config } from '@/components/mail/use-mail';
 import { type ThreadDestination } from '@/lib/thread-actions';
-import { useThread, useThreads } from '@/hooks/use-threads';
+import { useThreads } from '@/hooks/use-threads';
 import { useSearchValue } from '@/hooks/use-search-value';
 import { EmptyStateIcon } from '../icons/empty-state-svg';
 import { highlightText } from '@/lib/email-utils.client';
@@ -59,43 +59,65 @@ const Thread = memo(
     const { folder } = useParams<{ folder: string }>();
     const [, threads] = useThreads();
     const [threadId] = useQueryState('threadId');
-    const { data: getThreadData, isGroupThread, latestDraft } = useThread(message.id);
     const [id, setThreadId] = useQueryState('threadId');
     const [focusedIndex, setFocusedIndex] = useAtom(focusedIndexAtom);
 
+    // Use enriched data from list response directly
+    const hasEnrichedData = !!message.sender;
+    const isGroupThread = message.isGroupThread ?? false;
+
     const { latestMessage, idToUse, cleanName } = useMemo(() => {
-      const latestMessage = getThreadData?.latest;
-      const idToUse = latestMessage?.threadId ?? latestMessage?.id;
-      const cleanName = latestMessage?.sender?.name
-        ? latestMessage.sender.name.trim().replace(/^['"]|['"]$/g, '')
+      if (!hasEnrichedData) return { latestMessage: undefined, idToUse: undefined, cleanName: '' };
+
+      const idToUse = message.threadId ?? message.id;
+      const cleanName = message.sender?.name
+        ? message.sender.name.trim().replace(/^['"]|['"]$/g, '')
         : '';
 
+      // Construct a minimal ParsedMessage-compatible object for onClick
+      const latestMessage = {
+        id: message.id,
+        threadId: message.threadId ?? message.id,
+        sender: message.sender ?? { email: '' },
+        subject: message.subject ?? '',
+        to: message.to ?? [],
+        cc: message.cc ?? null,
+        bcc: [] as { name?: string; email: string }[],
+        receivedOn: message.receivedOn ?? '',
+        tags: message.tags ?? [],
+        title: message.snippet ?? '',
+        tls: false,
+        unread: message.hasUnread ?? false,
+        body: '',
+        processedHtml: '',
+        blobUrl: '',
+      } as ParsedMessage;
+
       return { latestMessage, idToUse, cleanName };
-    }, [getThreadData?.latest]);
+    }, [hasEnrichedData, message]);
 
     const optimisticState = useOptimisticThreadState(idToUse ?? '');
 
-    const { displayStarred, displayImportant, displayUnread, optimisticLabels, emailContent } =
+    const { displayStarred, displayImportant, displayUnread, optimisticLabels } =
       useMemo(() => {
-        const emailContent = getThreadData?.latest?.body;
         const displayStarred =
           optimisticState.optimisticStarred !== null
             ? optimisticState.optimisticStarred
-            : (getThreadData?.latest?.tags?.some((tag) => tag.name === 'STARRED') ?? false);
+            : (message.tags?.some((tag) => tag.name === 'STARRED') ?? false);
 
         const displayImportant =
           optimisticState.optimisticImportant !== null
             ? optimisticState.optimisticImportant
-            : (getThreadData?.latest?.tags?.some((tag) => tag.name === 'IMPORTANT') ?? false);
+            : (message.tags?.some((tag) => tag.name === 'IMPORTANT') ?? false);
 
         const displayUnread =
           optimisticState.optimisticRead !== null
             ? !optimisticState.optimisticRead
-            : (getThreadData?.hasUnread ?? false);
+            : (message.hasUnread ?? false);
 
         let labels: { id: string; name: string }[] = [];
-        if (getThreadData?.labels) {
-          labels = [...getThreadData.labels];
+        if (message.labels) {
+          labels = [...message.labels];
           const hasStarredLabel = labels.some((label) => label.name === 'STARRED');
 
           if (optimisticState.optimisticStarred !== null) {
@@ -124,15 +146,14 @@ const Thread = memo(
           displayImportant,
           displayUnread,
           optimisticLabels: labels,
-          emailContent,
         };
       }, [
         optimisticState.optimisticStarred,
         optimisticState.optimisticImportant,
         optimisticState.optimisticRead,
-        getThreadData?.latest?.tags,
-        getThreadData?.hasUnread,
-        getThreadData?.labels,
+        message.tags,
+        message.hasUnread,
+        message.labels,
         optimisticState.optimisticLabels,
       ]);
 
@@ -142,23 +163,23 @@ const Thread = memo(
     const handleToggleStar = useCallback(
       async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!getThreadData || !idToUse) return;
+        if (!idToUse) return;
 
         const newStarredState = !displayStarred;
         optimisticToggleStar([idToUse], newStarredState);
       },
-      [getThreadData, idToUse, displayStarred, optimisticToggleStar],
+      [idToUse, displayStarred, optimisticToggleStar],
     );
 
     const handleToggleImportant = useCallback(
       async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!getThreadData || !idToUse) return;
+        if (!idToUse) return;
 
         const newImportantState = !displayImportant;
         optimisticToggleImportant([idToUse], newImportantState);
       },
-      [getThreadData, idToUse, displayImportant, optimisticToggleImportant],
+      [idToUse, displayImportant, optimisticToggleImportant],
     );
 
     const handleNext = useCallback(
@@ -208,13 +229,11 @@ const Thread = memo(
       [folder],
     );
 
-    // Check if thread has a draft
-    const hasDraft = useMemo(() => {
-      return !!latestDraft;
-    }, [latestDraft]);
+    const hasDraft = message.hasDraft ?? false;
+    const totalReplies = message.totalReplies ?? 0;
 
     const content = useMemo(() => {
-      if (!latestMessage || !getThreadData) return null;
+      if (!latestMessage || !hasEnrichedData) return null;
 
       return (
         <div
@@ -433,15 +452,15 @@ const Thread = memo(
                           </span>
                         ) : null} */}
                       </span>
-                      {getThreadData.totalReplies > 1 ? (
+                      {totalReplies > 1 ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="rounded-md text-xs opacity-70">
-                              [{getThreadData.totalReplies}]
+                              [{totalReplies}]
                             </span>
                           </TooltipTrigger>
                           <TooltipContent className="p-1 text-xs">
-                            {m['common.mail.replies']({ count: getThreadData.totalReplies })}
+                            {m['common.mail.replies']({ count: totalReplies })}
                           </TooltipContent>
                         </Tooltip>
                       ) : null}
@@ -501,9 +520,9 @@ const Thread = memo(
                       </div>
                     )}
                   </div>
-                  {emailContent && (
+                  {message.snippet && (
                     <div className="text-muted-foreground mt-2 line-clamp-2 text-xs">
-                      {highlightText(emailContent, searchValue.highlight)}
+                      {highlightText(message.snippet, searchValue.highlight)}
                     </div>
                   )}
                   {/* {mainSearchTerm && (
@@ -521,7 +540,7 @@ const Thread = memo(
       );
     }, [
       latestMessage,
-      getThreadData,
+      hasEnrichedData,
       optimisticState,
       idToUse,
       folder,
@@ -536,7 +555,7 @@ const Thread = memo(
       isMailBulkSelected,
       threadLabels,
       optimisticLabels,
-      emailContent,
+      message.snippet,
     ]);
 
     return latestMessage ? (
