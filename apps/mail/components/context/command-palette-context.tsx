@@ -40,6 +40,7 @@ import {
 import { getMainSearchTerm, parseNaturalLanguageSearch } from '@/lib/utils';
 import { DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useContactSearch } from '@/hooks/use-contact-search';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useSearchValue } from '@/hooks/use-search-value';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLocation, useNavigate } from 'react-router';
@@ -203,6 +204,12 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
   const { contacts: localContacts } = useContactSearch(
     commandInputValue?.trim() || searchQuery?.trim() || '',
     10,
+  );
+
+  // Local thread search powered by MiniSearch + IndexedDB — instant keyword matching
+  const { results: localThreadResults } = useLocalSearch(
+    commandInputValue?.trim() || searchQuery?.trim() || '',
+    { limit: 5 },
   );
 
   useEffect(() => {
@@ -742,6 +749,7 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
   const hasMatchingCommands = useMemo(() => {
     if (!commandInputValue.trim()) return true;
     if (filteredContacts.length > 0) return true;
+    if (localThreadResults.length > 0) return true;
 
     const searchTerm = commandInputValue.toLowerCase();
 
@@ -754,7 +762,7 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
             item.keywords.some((keyword) => keyword.toLowerCase().includes(searchTerm))),
       ),
     );
-  }, [commandInputValue, allCommands, filteredContacts]);
+  }, [commandInputValue, allCommands, filteredContacts, localThreadResults]);
 
   const renderMainView = () => (
     <>
@@ -849,6 +857,38 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
                         {contact.email}
                       </span>
                     )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <Separator />
+          </>
+        )}
+        {localThreadResults.length > 0 && (
+          <>
+            <CommandGroup heading="Emails">
+              {localThreadResults.map((result) => (
+                <CommandItem
+                  key={`thread-${result.id}`}
+                  value={`emails ${result.subject} ${result.senderName} ${result.senderEmail}`}
+                  onSelect={() => {
+                    runCommand(() => {
+                      navigate(`/mail/inbox?threadId=${result.id}`);
+                    });
+                  }}
+                >
+                  <Mail
+                    size={16}
+                    strokeWidth={2}
+                    className="h-4 w-4 shrink-0 opacity-60"
+                    aria-hidden="true"
+                  />
+                  <div className="ml-2 flex flex-1 flex-col overflow-hidden">
+                    <span className="truncate">{result.subject || '(No subject)'}</span>
+                    <span className="text-muted-foreground truncate text-xs">
+                      {result.senderName || result.senderEmail}
+                      {result.snippet ? ` — ${result.snippet}` : ''}
+                    </span>
                   </div>
                 </CommandItem>
               ))}
@@ -1017,6 +1057,40 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
                           {contact.email}
                         </span>
                       )}
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <Separator />
+            </>
+          )}
+
+          {localThreadResults.length > 0 && (
+            <>
+              <CommandGroup heading="Emails">
+                {localThreadResults.map((result) => (
+                  <CommandItem
+                    key={`search-thread-${result.id}`}
+                    value={`emails ${result.subject} ${result.senderName} ${result.senderEmail}`}
+                    onSelect={() => {
+                      runCommand(() => {
+                        navigate(`/mail/inbox?threadId=${result.id}`);
+                      });
+                    }}
+                    disabled={isProcessing}
+                  >
+                    <Mail
+                      size={16}
+                      strokeWidth={2}
+                      className="h-4 w-4 shrink-0 opacity-60"
+                      aria-hidden="true"
+                    />
+                    <div className="ml-2 flex flex-1 flex-col overflow-hidden">
+                      <span className="truncate">{result.subject || '(No subject)'}</span>
+                      <span className="text-muted-foreground truncate text-xs">
+                        {result.senderName || result.senderEmail}
+                        {result.snippet ? ` — ${result.snippet}` : ''}
+                      </span>
                     </div>
                   </CommandItem>
                 ))}
