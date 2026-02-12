@@ -6,10 +6,85 @@ on:
       - main
   workflow_dispatch: # Manual trigger
 
+# Serialize deployments within this repo (prevents rapid push conflicts)
+concurrency:
+  group: pi-deployment
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/zero
+
 jobs:
+  # ========================================
+  # Job 1: Build Docker images on native ARM64 runner
+  # Push to GitHub Container Registry
+  # ========================================
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push nginx image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/nginx/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/nginx:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_PREFIX }}/nginx:latest
+          build-args: |
+            VITE_PUBLIC_APP_URL=${{ secrets.PI_APP_URL || 'https://mail.dvhome.com' }}
+            VITE_PUBLIC_BACKEND_URL=${{ secrets.PI_BACKEND_URL || 'https://mail.dvhome.com' }}
+          cache-from: type=gha,scope=nginx
+          cache-to: type=gha,mode=max,scope=nginx
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/standalone/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/server:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_PREFIX }}/server:latest
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+  # ========================================
+  # Job 2: Deploy pre-built images on Raspberry Pi
+  # ========================================
   deploy:
     runs-on: [self-hosted, pi]
-    timeout-minutes: 45
+    needs: build
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
     defaults:
       run:
         working-directory: /home/david/apps/zero-email
@@ -20,55 +95,71 @@ jobs:
           git fetch origin ${{ github.ref_name }}
           git reset --hard origin/${{ github.ref_name }}
 
-      - name: Build and deploy with Docker Compose
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull pre-built images
         run: |
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml pull --ignore-pull-failures
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up -d --build --remove-orphans
+          IMAGE_TAG="${{ needs.build.outputs.image_tag }}"
+          docker pull "${{ env.IMAGE_PREFIX }}/nginx:${IMAGE_TAG}"
+          docker pull "${{ env.IMAGE_PREFIX }}/server:${IMAGE_TAG}"
+
+      - name: Deploy with Docker Compose (flock for cross-repo safety)
+        run: |
+          IMAGE_TAG="${{ needs.build.outputs.image_tag }}" \
+          flock -x /tmp/pi-deploy.lock \
+            docker compose \
+              -f docker-compose.standalone.yaml \
+              -f docker-compose.pi.yaml \
+              -f docker-compose.tailscale.yaml \
+              up -d --no-build --remove-orphans
 
       - name: Run database migrations
         run: |
-          # Force re-run migrations (one-shot containers don't re-run on `up`)
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml rm -f migrations || true
-          docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml up --build migrations
+          IMAGE_TAG="${{ needs.build.outputs.image_tag }}" \
+          docker compose \
+            -f docker-compose.standalone.yaml \
+            -f docker-compose.pi.yaml \
+            -f docker-compose.tailscale.yaml \
+            rm -f migrations || true
+
+          IMAGE_TAG="${{ needs.build.outputs.image_tag }}" \
+          docker compose \
+            -f docker-compose.standalone.yaml \
+            -f docker-compose.pi.yaml \
+            -f docker-compose.tailscale.yaml \
+            up migrations
+
           echo "Migrations completed"
-
-
-      - name: Cleanup Docker disk space
-        run: |
-          # Always remove dangling images and build cache not used in the last 24h
-          docker image prune -f
-          docker builder prune -f --filter "until=24h"
-
-          # If disk usage exceeds 70%, do an aggressive cleanup
-          USAGE=$(df / --output=pcent | tail -1 | tr -d ' %')
-          echo "Current disk usage: ${USAGE}%"
-          if [ "$USAGE" -gt 70 ]; then
-            echo "Disk usage above 70%, running aggressive cleanup..."
-            docker system prune -a -f --filter "until=48h"
-          fi
 
       - name: Wait for services to be healthy
         run: |
-          echo "Waiting for services to start..."
-          sleep 30
-
-          # Wait for server to be healthy (up to 2 minutes)
-          for i in {1..24}; do
-            if docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml ps server | grep -q "healthy"; then
-              echo "Server is healthy"
-              break
+          echo "Waiting for server health check..."
+          for i in $(seq 1 40); do
+            if curl -sf --insecure https://localhost/health > /dev/null 2>&1; then
+              echo "Health check passed after ${i} attempts"
+              exit 0
             fi
-            echo "Waiting for server to be healthy... ($i/24)"
-            sleep 5
+            echo "Waiting... ($i/40)"
+            sleep 3
           done
+          echo "Health check failed after 40 attempts"
+          exit 1
 
-      - name: Health check
+      - name: Cleanup Docker disk space (project-scoped)
         run: |
-          curl -sf --insecure https://localhost/health || exit 1
-          echo "Health check passed!"
+          # Safe: remove only dangling (unreferenced) images
+          docker image prune -f
+          # Safe: clean build cache older than 24h
+          docker builder prune -f --filter "until=24h"
 
       - name: Show service status
-        run: docker compose -f docker-compose.standalone.yaml -f docker-compose.pi.yaml -f docker-compose.tailscale.yaml ps
+        run: |
+          docker compose \
+            -f docker-compose.standalone.yaml \
+            -f docker-compose.pi.yaml \
+            -f docker-compose.tailscale.yaml \
+            ps
 
       - name: Show logs on failure
         if: failure()

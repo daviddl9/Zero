@@ -17,6 +17,7 @@ services:
   # Nginx - Frontend & Reverse Proxy
   # ========================================
   nginx:
+    image: ghcr.io/daviddl9/zero/nginx:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile
@@ -44,6 +45,7 @@ services:
   # Backend Server (Node.js + BullMQ)
   # ========================================
   server:
+    image: ghcr.io/daviddl9/zero/server:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: docker/standalone/Dockerfile
@@ -134,9 +136,7 @@ services:
   # Database Migrations
   # ========================================
   migrations:
-    build:
-      context: .
-      dockerfile: docker/db/Dockerfile
+    image: ghcr.io/daviddl9/zero/server:${IMAGE_TAG:-local}
     container_name: zero-migrations
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-zerodotemail}
