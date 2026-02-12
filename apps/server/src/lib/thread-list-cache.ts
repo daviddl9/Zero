@@ -12,7 +12,7 @@ import type { Redis } from 'ioredis';
 import type { IGetThreadsResponse } from './driver/types';
 
 const CACHE_PREFIX = 'tl:';
-const DEFAULT_TTL_SECONDS = 60;
+const DEFAULT_TTL_SECONDS = 3600; // 1 hour — selective invalidation keeps cache accurate
 
 let redisInstance: Redis | null = null;
 
@@ -86,6 +86,39 @@ export function setCachedThreadList(
   redisInstance.set(key, JSON.stringify(data), 'EX', ttlSeconds).catch(() => {
     // Silently ignore cache write errors
   });
+}
+
+/**
+ * Invalidate cached thread lists for specific folders only.
+ * Use this instead of invalidateThreadListCache when you know which folders are affected.
+ */
+export async function invalidateFolderCaches(
+  connectionId: string,
+  folders: string[],
+): Promise<void> {
+  if (!redisInstance) return;
+
+  try {
+    for (const folder of folders) {
+      const pattern = `${CACHE_PREFIX}${connectionId}:${folder}:*`;
+      let cursor = '0';
+      do {
+        const [nextCursor, keys] = await redisInstance.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100,
+        );
+        cursor = nextCursor;
+        if (keys.length > 0) {
+          await redisInstance.del(...keys);
+        }
+      } while (cursor !== '0');
+    }
+  } catch {
+    // Silently ignore invalidation errors
+  }
 }
 
 /**

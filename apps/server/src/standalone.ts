@@ -57,7 +57,7 @@ import {
 import * as schema from './db/schema';
 
 // Thread list cache
-import { initThreadListCache } from './lib/thread-list-cache';
+import { initThreadListCache, invalidateFolderCaches } from './lib/thread-list-cache';
 
 // Email HTML preprocessing cache
 import { initEmailHtmlCache } from './lib/email-html-cache';
@@ -1046,6 +1046,9 @@ function registerJobProcessors(deps: ReturnType<typeof createJobDependencies>) {
       getDriver: deps.getDriver as never,
       syncThread: deps.syncThread,
       evaluateTriggers: deps.evaluateTriggers,
+      invalidateInboxCache: async (connectionId: string) => {
+        invalidateFolderCaches(connectionId, ['INBOX']).catch(() => {});
+      },
     }),
   );
 

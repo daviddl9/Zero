@@ -59,6 +59,7 @@ export interface PollNewEmailsDependencies {
   getDriver: (connection: Connection) => MailDriver | null;
   syncThread: (connectionId: string, threadId: string) => Promise<ThreadData | null>;
   evaluateTriggers: (connectionId: string, threadData: TriggerData) => Promise<void>;
+  invalidateInboxCache: (connectionId: string) => Promise<void>;
 }
 
 /**
@@ -225,6 +226,11 @@ async function processConnection(
     } catch (error) {
       console.error(`[PollNewEmailsJob] Failed to process thread ${threadId}:`, error);
     }
+  }
+
+  // Invalidate INBOX cache so next load reflects new emails
+  if (processedCount > 0) {
+    await deps.invalidateInboxCache(connection.id);
   }
 
   // Update history ID for next poll

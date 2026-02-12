@@ -10,7 +10,7 @@ import { createDb } from '../db';
 import { Effect } from 'effect';
 import { isSelfHostedMode } from './self-hosted';
 import { createStandaloneAgent } from './standalone-agent';
-import { invalidateThreadListCache } from './thread-list-cache';
+import { invalidateFolderCaches } from './thread-list-cache';
 import { getStandaloneDb } from './standalone-server-utils';
 
 /**
@@ -400,6 +400,9 @@ export const getThread: (
   return { result: result.result, shardId: result.shardId };
 };
 
+// Labels that determine which folder a thread appears in
+const FOLDER_LABELS = new Set(['INBOX', 'TRASH', 'SPAM', 'SNOOZED', 'DRAFT', 'SENT']);
+
 export const modifyThreadLabelsInDB = async (
   connectionId: string,
   threadId: string,
@@ -410,8 +413,13 @@ export const modifyThreadLabelsInDB = async (
   if (isSelfHostedMode()) {
     const agent = await getZeroAgent(connectionId);
     await agent.stub.modifyLabels([threadId], { addLabels, removeLabels });
-    // Invalidate thread list cache so next load reflects the change
-    invalidateThreadListCache(connectionId).catch(() => {});
+
+    // Only invalidate if folder-level labels changed (INBOX, TRASH, etc.)
+    // Non-folder mutations (UNREAD, STARRED, IMPORTANT) don't move threads between lists
+    const affectedFolders = [...addLabels, ...removeLabels].filter((l) => FOLDER_LABELS.has(l));
+    if (affectedFolders.length > 0) {
+      invalidateFolderCaches(connectionId, affectedFolders).catch(() => {});
+    }
     return;
   }
 

@@ -30,7 +30,7 @@ export const useThreads = () => {
       {
         initialCursor: '',
         getNextPageParam: (lastPage) => lastPage?.nextPageToken ?? null,
-        staleTime: 60 * 1000 * 1, // 1 minute
+        staleTime: 5 * 60 * 1000, // 5 minutes — backend cache is 1h, optimistic updates handle UI
         refetchOnMount: true,
         refetchIntervalInBackground: true,
       },
