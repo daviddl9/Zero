@@ -182,18 +182,7 @@ export class GoogleMailManager implements MailManager {
     return this.withErrorHandler(
       'markAsRead',
       async () => {
-        const finalIds = (
-          await Promise.all(
-            threadIds.map(async (id) => {
-              const threadMetadata = await this.getThreadMetadata(id);
-              return threadMetadata.messages
-                .filter((msg) => msg.labelIds && msg.labelIds.includes('UNREAD'))
-                .map((msg) => msg.id);
-            }),
-          ).then((idArrays) => [...new Set(idArrays.flat())])
-        ).filter((id): id is string => id !== undefined);
-
-        await this.modifyThreadLabels(finalIds, { removeLabelIds: ['UNREAD'] });
+        await this.modifyThreadLabels(threadIds, { removeLabelIds: ['UNREAD'] });
       },
       { threadIds },
     );
@@ -202,17 +191,7 @@ export class GoogleMailManager implements MailManager {
     return this.withErrorHandler(
       'markAsUnread',
       async () => {
-        const finalIds = (
-          await Promise.all(
-            threadIds.map(async (id) => {
-              const threadMetadata = await this.getThreadMetadata(id);
-              return threadMetadata.messages
-                .filter((msg) => msg.labelIds && !msg.labelIds.includes('UNREAD'))
-                .map((msg) => msg.id);
-            }),
-          ).then((idArrays) => [...new Set(idArrays.flat())])
-        ).filter((id): id is string => id !== undefined);
-        await this.modifyThreadLabels(finalIds, { addLabelIds: ['UNREAD'] });
+        await this.modifyThreadLabels(threadIds, { addLabelIds: ['UNREAD'] });
       },
       { threadIds },
     );
@@ -405,14 +384,13 @@ export class GoogleMailManager implements MailManager {
               message.payload?.parts?.[0]?.body?.data ||
               '';
 
-            const decodedBody = bodyData
-              ? he
-                  .decode(fromBinary(bodyData))
-                  .replace(/<[^>]*>/g, '')
-                  .trim() === fromBinary(bodyData).trim()
-                ? he.decode(fromBinary(bodyData).replace(/\n/g, '<br>'))
-                : he.decode(fromBinary(bodyData))
-              : '';
+            let decodedBody = '';
+            if (bodyData) {
+              const rawBody = fromBinary(bodyData);
+              const htmlDecoded = he.decode(rawBody);
+              const isPlainText = htmlDecoded.replace(/<[^>]*>/g, '').trim() === rawBody.trim();
+              decodedBody = isPlainText ? he.decode(rawBody.replace(/\n/g, '<br>')) : htmlDecoded;
+            }
 
             let processedBody = decodedBody;
             if (message.payload?.parts) {
@@ -427,24 +405,27 @@ export class GoogleMailManager implements MailManager {
                 return isInline && hasContentId;
               });
 
+              // Batch CID replacements: build map then single regex pass
+              const cidMap = new Map<string, string>();
               for (const part of inlineImages) {
                 const contentId = part.headers?.find(
                   (h) => h.name?.toLowerCase() === 'content-id',
                 )?.value;
                 if (contentId && part.body?.attachmentId) {
                   const cleanContentId = contentId.replace(/[<>]/g, '');
-                  const escapedContentId = cleanContentId.replace(
-                    /[.*+?^${}()|[\]\\]/g,
-                    '\\$&',
-                  );
-                  // Use proxy URL instead of fetching inline — browser loads lazily
-                  // Path starts with /api/ so nginx routes it to the backend
                   const proxyUrl = `/api/attachments/${message.id}/${part.body.attachmentId}?mimeType=${encodeURIComponent(part.mimeType || 'image/png')}`;
-                  processedBody = processedBody.replace(
-                    new RegExp(`cid:${escapedContentId}`, 'g'),
-                    proxyUrl,
-                  );
+                  cidMap.set(cleanContentId, proxyUrl);
                 }
+              }
+              if (cidMap.size > 0) {
+                const pattern = [...cidMap.keys()].map((cid) =>
+                  cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+                );
+                const regex = new RegExp(`cid:(${pattern.join('|')})`, 'g');
+                processedBody = processedBody.replace(
+                  regex,
+                  (match, cid) => cidMap.get(cid) || match,
+                );
               }
             }
 

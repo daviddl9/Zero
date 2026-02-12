@@ -62,6 +62,9 @@ import { initThreadListCache } from './lib/thread-list-cache';
 // Email HTML preprocessing cache
 import { initEmailHtmlCache } from './lib/email-html-cache';
 
+// BIMI cache
+import { initBimiCache } from './lib/bimi-cache';
+
 // Standalone modules
 import { standaloneEnv } from './lib/standalone-env';
 import { createStandaloneAuth, type StandaloneAuth } from './lib/standalone-auth';
@@ -183,6 +186,9 @@ async function main() {
 
   // Initialize email HTML preprocessing cache (Redis-backed, 24h TTL)
   initEmailHtmlCache(redis);
+
+  // Initialize BIMI cache (Redis-backed, 24h TTL)
+  initBimiCache(redis);
 
   // Initialize KV stores
   const kvFactory = new KVStoreFactory(redis);

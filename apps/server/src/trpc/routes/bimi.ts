@@ -1,6 +1,7 @@
 import { router, privateProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
+import { getCachedBimi, setCachedBimi, type BimiCacheEntry } from '../../lib/bimi-cache';
 
 const parseBimiRecord = (record: string) => {
   const parts = record.split(';').map((part) => part.trim());
@@ -86,6 +87,59 @@ const fetchLogoContent = async (logoUrl: string): Promise<string | null> => {
   }
 };
 
+/**
+ * Fetch BIMI data for a domain (DNS lookup + SVG fetch).
+ * Shared logic used by all BIMI endpoints.
+ */
+async function fetchBimiForDomain(domain: string): Promise<BimiCacheEntry> {
+  const bimiRecordText = await fetchDnsRecord(domain);
+
+  if (!bimiRecordText) {
+    return { domain, bimiRecord: null, logo: null };
+  }
+
+  const bimiRecord = parseBimiRecord(bimiRecordText);
+
+  let logo: BimiCacheEntry['logo'] = null;
+  if (bimiRecord.logoUrl) {
+    const svgContent = await fetchLogoContent(bimiRecord.logoUrl);
+    if (svgContent) {
+      logo = { url: bimiRecord.logoUrl, svgContent };
+    }
+  }
+
+  return { domain, bimiRecord, logo };
+}
+
+/**
+ * Get BIMI data for a domain, checking cache first.
+ */
+async function getBimiWithCache(domain: string): Promise<BimiCacheEntry> {
+  const cached = await getCachedBimi(domain);
+  if (cached) return cached;
+
+  const result = await fetchBimiForDomain(domain);
+  setCachedBimi(domain, result);
+  return result;
+}
+
+const bimiOutputSchema = z.object({
+  domain: z.string(),
+  bimiRecord: z
+    .object({
+      version: z.string().optional(),
+      logoUrl: z.string().optional(),
+      authorityUrl: z.string().optional(),
+    })
+    .nullable(),
+  logo: z
+    .object({
+      url: z.string(),
+      svgContent: z.string(),
+    })
+    .nullable(),
+});
+
 export const bimiRouter = router({
   getByEmail: privateProcedure
     .input(
@@ -93,24 +147,7 @@ export const bimiRouter = router({
         email: z.string().email(),
       }),
     )
-    .output(
-      z.object({
-        domain: z.string(),
-        bimiRecord: z
-          .object({
-            version: z.string().optional(),
-            logoUrl: z.string().optional(),
-            authorityUrl: z.string().optional(),
-          })
-          .nullable(),
-        logo: z
-          .object({
-            url: z.string(),
-            svgContent: z.string(),
-          })
-          .nullable(),
-      }),
-    )
+    .output(bimiOutputSchema)
     .query(async ({ input }) => {
       const domain = input.email.split('@')[1];
 
@@ -121,34 +158,7 @@ export const bimiRouter = router({
         });
       }
 
-      const bimiRecordText = await fetchDnsRecord(domain);
-
-      if (!bimiRecordText) {
-        return {
-          domain,
-          bimiRecord: null,
-          logo: null,
-        };
-      }
-
-      const bimiRecord = parseBimiRecord(bimiRecordText);
-
-      let logo = null;
-      if (bimiRecord.logoUrl) {
-        const svgContent = await fetchLogoContent(bimiRecord.logoUrl);
-        if (svgContent) {
-          logo = {
-            url: bimiRecord.logoUrl,
-            svgContent,
-          };
-        }
-      }
-
-      return {
-        domain,
-        bimiRecord,
-        logo,
-      };
+      return getBimiWithCache(domain);
     }),
 
   getByDomain: privateProcedure
@@ -157,52 +167,22 @@ export const bimiRouter = router({
         domain: z.string().min(1),
       }),
     )
-    .output(
+    .output(bimiOutputSchema)
+    .query(async ({ input }) => {
+      return getBimiWithCache(input.domain);
+    }),
+
+  getByDomains: privateProcedure
+    .input(
       z.object({
-        domain: z.string(),
-        bimiRecord: z
-          .object({
-            version: z.string().optional(),
-            logoUrl: z.string().optional(),
-            authorityUrl: z.string().optional(),
-          })
-          .nullable(),
-        logo: z
-          .object({
-            url: z.string(),
-            svgContent: z.string(),
-          })
-          .nullable(),
+        domains: z.array(z.string().min(1)).min(1).max(50),
       }),
     )
+    .output(z.array(bimiOutputSchema))
     .query(async ({ input }) => {
-      const bimiRecordText = await fetchDnsRecord(input.domain);
-
-      if (!bimiRecordText) {
-        return {
-          domain: input.domain,
-          bimiRecord: null,
-          logo: null,
-        };
-      }
-
-      const bimiRecord = parseBimiRecord(bimiRecordText);
-
-      let logo = null;
-      if (bimiRecord.logoUrl) {
-        const svgContent = await fetchLogoContent(bimiRecord.logoUrl);
-        if (svgContent) {
-          logo = {
-            url: bimiRecord.logoUrl,
-            svgContent,
-          };
-        }
-      }
-
-      return {
-        domain: input.domain,
-        bimiRecord,
-        logo,
-      };
+      const results = await Promise.all(
+        input.domains.map((domain) => getBimiWithCache(domain)),
+      );
+      return results;
     }),
 });
