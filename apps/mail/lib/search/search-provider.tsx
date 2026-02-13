@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import type { QueryCache } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useActiveConnection } from '@/hooks/use-connections';
+import { trpcClient } from '@/providers/query-provider';
 import { getSearchDb, closeSearchDb } from './search-db';
 import { addThreads, rebuild, getIndexSize } from './search-index';
 import {
@@ -12,6 +13,7 @@ import {
   getContactCount,
 } from './contact-index';
 import { search as miniSearch } from './search-index';
+import { useBackgroundSync } from './background-sync';
 import { parseSearchQuery, hasUnsupportedOperators } from './query-parser';
 import type { IndexedThread, IndexedContact, ParsedQuery } from './types';
 
@@ -245,6 +247,23 @@ export function SearchIndexProvider({ children }: { children: React.ReactNode })
     },
     [],
   );
+
+  const fetchThreads = useCallback(
+    async (folder: string, cursor: string) => {
+      const result = await trpcClient.mail.listThreads.query({
+        folder,
+        cursor: cursor || undefined,
+      });
+      return {
+        threads: (result.threads ?? []) as ThreadSummaryFromCache[],
+        nextPageToken: result.nextPageToken ?? null,
+      };
+    },
+    [],
+  );
+
+  // Background sync: index sent emails for contact + thread search coverage
+  useBackgroundSync(connectionId, isReady, indexThreadsBatch, fetchThreads);
 
   const searchFn = useCallback(
     (query: string, options?: { limit?: number }): SearchResult[] => {

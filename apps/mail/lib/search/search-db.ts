@@ -1,15 +1,21 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { IndexedThread, IndexedContact } from './types';
+import type { IndexedThread, IndexedContact, SyncProgress } from './types';
 
 export class SearchDatabase extends Dexie {
   threads!: EntityTable<IndexedThread, 'id'>;
   contacts!: EntityTable<IndexedContact, 'email'>;
+  syncProgress!: EntityTable<SyncProgress, 'id'>;
 
   constructor(connectionId: string) {
     super(`zero-search-${connectionId}`);
     this.version(1).stores({
       threads: 'id, senderEmail, receivedOn',
       contacts: 'email, interactionCount',
+    });
+    this.version(2).stores({
+      threads: 'id, senderEmail, receivedOn',
+      contacts: 'email, interactionCount',
+      syncProgress: 'id',
     });
   }
 }

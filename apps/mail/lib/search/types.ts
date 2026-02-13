@@ -22,6 +22,15 @@ export interface IndexedContact {
   lastSeen: number;
 }
 
+export interface SyncProgress {
+  id: string;
+  folder: string;
+  nextPageToken: string | null;
+  completed: boolean;
+  lastSyncedAt: number;
+  totalIndexed: number;
+}
+
 export interface ParsedQuery {
   freeText: string;
   from?: string;
