@@ -54,7 +54,7 @@ export interface StandaloneAgentStub {
   createLabel: MailManager['createLabel'];
   updateLabel: MailManager['updateLabel'];
   deleteLabel: MailManager['deleteLabel'];
-  rawListThreads: MailManager['list'];
+  rawListThreads: MailManager['listEnriched'];
   normalizeIds: MailManager['normalizeIds'];
   getEmailAliases: MailManager['getEmailAliases'];
   getThreadLabels: MailManager['getThreadLabels'];
@@ -283,7 +283,7 @@ export function createStandaloneAgent(
     createLabel: driver.createLabel.bind(driver),
     updateLabel: driver.updateLabel.bind(driver),
     deleteLabel: driver.deleteLabel.bind(driver),
-    rawListThreads: driver.list.bind(driver),
+    rawListThreads: driver.listEnriched.bind(driver),
     normalizeIds: driver.normalizeIds.bind(driver),
     getEmailAliases: driver.getEmailAliases.bind(driver),
     getThreadLabels: driver.getThreadLabels.bind(driver),

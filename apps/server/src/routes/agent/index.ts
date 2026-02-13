@@ -755,7 +755,7 @@ export class ZeroDriver extends DurableObject<ZeroEnv> {
     if (!this.driver) {
       throw new Error('No driver available');
     }
-    return await this.driver.list(params);
+    return await this.driver.listEnriched(params);
   }
 
   async getThread(threadId: string, includeDrafts: boolean = false) {
