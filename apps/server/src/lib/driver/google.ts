@@ -332,7 +332,7 @@ export class GoogleMailManager implements MailManager {
         const res = await this.gmail.users.threads.list({
           userId: 'me',
           q: normalizedQ ? normalizedQ : undefined,
-          labelIds: folder === 'inbox' ? labelIds : [],
+          labelIds: folder === 'inbox' && !normalizedQ ? labelIds : [],
           maxResults,
           pageToken: pageToken ? pageToken : undefined,
           quotaUser: this.getQuotaUser(),
