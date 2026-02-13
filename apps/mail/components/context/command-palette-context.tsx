@@ -831,12 +831,12 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
                       const filter: ActiveFilter = {
                         id: `from-${Date.now()}`,
                         type: 'from',
-                        value: `from:${contact.email}`,
-                        display: `From: ${contact.name || contact.email}`,
+                        value: contact.email,
+                        display: `From: ${contact.email}`,
                       };
                       addFilter(filter);
                       setSearchValue({
-                        value: `from:${contact.email}`,
+                        value: contact.email,
                         highlight: contact.name || contact.email,
                         folder: searchValue.folder,
                         isAISearching: false,
