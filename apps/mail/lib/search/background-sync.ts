@@ -110,11 +110,14 @@ async function syncFolder<T extends SyncableThread>(
   });
 }
 
+const DEFAULT_SYNC_FOLDERS = ['INBOX', 'SENT'];
+
 export function useBackgroundSync<T extends SyncableThread>(
   connectionId: string | null,
   isReady: boolean,
   indexThreadsBatch: (connId: string, threads: T[]) => Promise<void>,
   fetchThreads: (folder: string, cursor: string) => Promise<{ threads: T[]; nextPageToken: string | null }>,
+  folders: string[] = DEFAULT_SYNC_FOLDERS,
 ): void {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -124,27 +127,32 @@ export function useBackgroundSync<T extends SyncableThread>(
     const ac = new AbortController();
     abortRef.current = ac;
 
-    const run = () => {
-      syncFolder(connectionId, 'SENT', fetchThreads, indexThreadsBatch, ac.signal).catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        console.warn('[BackgroundSync] Error syncing SENT folder:', err);
-      });
+    const run = async () => {
+      for (const folder of folders) {
+        if (ac.signal.aborted) return;
+        try {
+          await syncFolder(connectionId, folder, fetchThreads, indexThreadsBatch, ac.signal);
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          console.warn(`[BackgroundSync] Error syncing ${folder} folder:`, err);
+        }
+      }
     };
 
     if ('requestIdleCallback' in window) {
-      const id = requestIdleCallback(run);
+      const id = requestIdleCallback(() => void run());
       return () => {
         cancelIdleCallback(id);
         ac.abort();
         abortRef.current = null;
       };
     } else {
-      const timer = setTimeout(run, 500);
+      const timer = setTimeout(() => void run(), 500);
       return () => {
         clearTimeout(timer);
         ac.abort();
         abortRef.current = null;
       };
     }
-  }, [connectionId, isReady, indexThreadsBatch, fetchThreads]);
+  }, [connectionId, isReady, indexThreadsBatch, fetchThreads, folders]);
 }

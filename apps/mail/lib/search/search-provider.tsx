@@ -262,7 +262,7 @@ export function SearchIndexProvider({ children }: { children: React.ReactNode })
     [],
   );
 
-  // Background sync: index sent emails for contact + thread search coverage
+  // Background sync: index INBOX and SENT emails for comprehensive local search
   useBackgroundSync(connectionId, isReady, indexThreadsBatch, fetchThreads);
 
   const searchFn = useCallback(
