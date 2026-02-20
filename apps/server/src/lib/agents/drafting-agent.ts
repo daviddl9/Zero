@@ -31,8 +31,9 @@ export class DraftingAgent {
                 parameters: z.object({
                     recipientEmail: z.string().describe('The email address of the recipient'),
                 }),
-                execute: async ({ recipientEmail }) => {
+                execute: async ({ recipientEmail: llmRecipient }) => {
                     try {
+                        const recipientEmail = context.recipientEmail || llmRecipient;
                         if (!recipientEmail) {
                             steps.push('No recipient email provided, skipping past email search.');
                             return [];
