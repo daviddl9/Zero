@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
-import { Check, Command, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucide-react';
+import { Check, Command, ListFilter, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextEffect } from '@/components/motion-primitives/text-effect';
@@ -23,7 +23,7 @@ import { useCorrectionTracker, useSelectionTracker } from '@/hooks/use-correctio
 import { useEmailAliases } from '@/hooks/use-email-aliases';
 import { ScheduleSendPicker } from './schedule-send-picker';
 import useComposeEditor from '@/hooks/use-compose-editor';
-import { CurvedArrow, Sparkles, X } from '../icons/icons';
+import { CurvedArrow, PencilCompose, Sparkles, X } from '../icons/icons';
 import { gitHubEmojis } from '@tiptap/extension-emoji';
 import { AnimatePresence, motion } from 'motion/react';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -123,6 +123,8 @@ export function EmailComposer({
   const [agentSteps, setAgentSteps] = useState<string[]>([]);
   const [agentIsThinking, setAgentIsThinking] = useState(false);
   const [isGeneratingSubject, setIsGeneratingSubject] = useState(false);
+  const [helpMeWriteOpen, setHelpMeWriteOpen] = useState(false);
+  const [helpMeWritePrompt, setHelpMeWritePrompt] = useState('');
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [scheduleAt, setScheduleAt] = useState<string>();
   const [isScheduleValid, setIsScheduleValid] = useState<boolean>(true);
@@ -420,7 +422,7 @@ export function EmailComposer({
     await proceedWithSend();
   };
 
-  const handleAiGenerate = async () => {
+  const handleAiGenerate = async (description?: string) => {
     try {
       setIsLoading(true);
       setAiIsLoading(true);
@@ -430,7 +432,7 @@ export function EmailComposer({
 
       const result = await agentGenerateDrafts({
         recipientEmail: values.to[0],
-        userPoints: editor.getText(),
+        userPoints: description || editor.getText(),
       });
 
       if (result.steps) {
@@ -439,16 +441,31 @@ export function EmailComposer({
 
       // If we have multiple drafts, show the draft selector
       if (result.drafts && result.drafts.length > 1) {
-        const drafts: Draft[] = result.drafts.map((body, index) => ({
-          id: `ai-${index}`,
-          body,
-          approach: index === 0 ? 'Response Option A' : 'Response Option B',
-        }));
+        const drafts: Draft[] = result.drafts.map((draft, index) => {
+          // Handle both old string format and new structured format
+          if (typeof draft === 'string') {
+            return {
+              id: `ai-${index}`,
+              body: draft,
+              approach: index === 0 ? 'Response Option A' : 'Response Option B',
+            };
+          }
+          return {
+            id: `ai-${index}`,
+            body: draft.body,
+            approach: draft.approach || (index === 0 ? 'Response Option A' : 'Response Option B'),
+            subject: draft.subject,
+            to: draft.to,
+            cc: draft.cc,
+          };
+        });
         setGeneratedDrafts(drafts);
         setAiGeneratedMessage(null);
       } else {
         // Fall back to single draft behavior
-        setAiGeneratedMessage(result.drafts?.[0] || '');
+        const firstDraft = result.drafts?.[0];
+        const body = typeof firstDraft === 'string' ? firstDraft : firstDraft?.body || '';
+        setAiGeneratedMessage(body);
         setGeneratedDrafts(null);
       }
     } catch (error) {
@@ -459,6 +476,45 @@ export function EmailComposer({
       setAiIsLoading(false);
       setAgentIsThinking(false);
     }
+  };
+
+  const handleHelpMeWrite = async () => {
+    const prompt = helpMeWritePrompt.trim();
+    if (!prompt) return;
+
+    const values = getValues();
+    const existingBody = editor.getText().trim();
+    const existingSubject = values.subject?.trim();
+
+    let fullPrompt = prompt;
+    if (existingSubject || existingBody) {
+      const contextParts: string[] = [];
+      if (existingSubject) contextParts.push(`Subject: ${existingSubject}`);
+      if (existingBody) contextParts.push(`Draft so far:\n${existingBody}`);
+      fullPrompt = `${prompt}\n\nExisting context:\n${contextParts.join('\n')}`;
+    }
+
+    if (!subjectInput.trim()) {
+      await handleGenerateSubject();
+    }
+    setAiGeneratedMessage(null);
+    setGeneratedDrafts(null);
+    setHelpMeWriteOpen(false);
+    await handleAiGenerate(fullPrompt);
+    setHelpMeWritePrompt('');
+  };
+
+  const handleMakeConcise = async () => {
+    const text = editor.getText().trim();
+    if (!text) {
+      toast.error('Write an email first, then make it concise');
+      return;
+    }
+    setAiGeneratedMessage(null);
+    setGeneratedDrafts(null);
+    await handleAiGenerate(
+      `Rewrite this email to be more succinct and clear while keeping the same tone and key points:\n\n${text}`,
+    );
   };
 
   const saveDraft = useCallback(async () => {
@@ -1038,6 +1094,22 @@ export function EmailComposer({
                     if (draft.subject) {
                       setValue('subject', draft.subject);
                     }
+
+                    // Append To recipients (deduplicated)
+                    if (draft.to && draft.to.length > 0) {
+                      const currentTo = values.to || [];
+                      const newTo = [...new Set([...currentTo, ...draft.to])];
+                      setValue('to', newTo, { shouldDirty: true });
+                    }
+
+                    // Append Cc recipients (deduplicated) and show CC field
+                    if (draft.cc && draft.cc.length > 0) {
+                      const currentCc = values.cc || [];
+                      const newCc = [...new Set([...currentCc, ...draft.cc])];
+                      setValue('cc', newCc, { shouldDirty: true });
+                      setShowCc(true);
+                    }
+
                     setGeneratedDrafts(null);
                   }}
                   onReject={() => {
@@ -1069,33 +1141,111 @@ export function EmailComposer({
                 />
               ) : null}
             </AnimatePresence>
-            <Button
-              size={'xs'}
-              variant={'ghost'}
-              className="cursor-pointer border border-[#8B5CF6]"
-              onClick={async () => {
-                if (!subjectInput.trim()) {
-                  await handleGenerateSubject();
-                }
-                setAiGeneratedMessage(null);
-                setGeneratedDrafts(null);
-                await handleAiGenerate();
-              }}
-              disabled={isLoading || aiIsLoading || messageLength < 1}
-            >
-              <div className="flex items-center justify-center gap-2.5 pl-0.5">
-                <div className="flex h-5 items-center justify-center gap-1 rounded-sm">
-                  {aiIsLoading ? (
-                    <Loader className="h-3.5 w-3.5 animate-spin fill-black dark:fill-white" />
-                  ) : (
-                    <Sparkles className="h-3.5 w-3.5 fill-black dark:fill-white" />
-                  )}
-                </div>
-                <div className="hidden text-center text-sm leading-none text-black md:block dark:text-white">
-                  Generate
-                </div>
-              </div>
-            </Button>
+            <AnimatePresence mode="wait">
+              {helpMeWriteOpen ? (
+                <motion.div
+                  key="help-me-write-bar"
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{
+                    width: 'auto',
+                    opacity: 1,
+                    transition: {
+                      width: { type: 'spring', stiffness: 250, damping: 35 },
+                      opacity: { duration: 0.3 },
+                    },
+                  }}
+                  exit={{
+                    width: 0,
+                    opacity: 0,
+                    transition: {
+                      width: { type: 'spring', stiffness: 250, damping: 35 },
+                      opacity: { duration: 0.2 },
+                    },
+                  }}
+                  className="flex items-center gap-1.5 overflow-hidden rounded-full border border-[#E7E7E7] bg-white px-2 py-1 dark:border-[#3A3A3A] dark:bg-[#2A2A2A]"
+                >
+                  <PencilCompose className="h-3.5 w-3.5 shrink-0 fill-[#8C8C8C]" />
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="Help me write..."
+                    value={helpMeWritePrompt}
+                    onChange={(e) => setHelpMeWritePrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && helpMeWritePrompt.trim()) {
+                        e.preventDefault();
+                        void handleHelpMeWrite();
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setHelpMeWriteOpen(false);
+                        setHelpMeWritePrompt('');
+                      }
+                    }}
+                    className="w-[180px] bg-transparent text-sm text-black placeholder:text-[#8C8C8C] focus:outline-none sm:w-[260px] dark:text-white"
+                    disabled={aiIsLoading}
+                  />
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="h-6 shrink-0 cursor-pointer px-1.5 text-xs text-[#8C8C8C] hover:text-black dark:hover:text-white"
+                    onClick={() => {
+                      setHelpMeWriteOpen(false);
+                      setHelpMeWritePrompt('');
+                    }}
+                    disabled={aiIsLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="xs"
+                    className="h-6 shrink-0 cursor-pointer px-2 text-xs"
+                    onClick={() => void handleHelpMeWrite()}
+                    disabled={!helpMeWritePrompt.trim() || isLoading || aiIsLoading}
+                  >
+                    {aiIsLoading ? (
+                      <Loader className="h-3 w-3 animate-spin" />
+                    ) : (
+                      'Create'
+                    )}
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="help-me-write-buttons"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1, transition: { duration: 0.2 } }}
+                  exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                  className="flex items-center gap-1.5"
+                >
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="cursor-pointer gap-1.5 rounded-full border border-[#E7E7E7] dark:border-[#3A3A3A]"
+                    onClick={() => setHelpMeWriteOpen(true)}
+                    disabled={isLoading || aiIsLoading}
+                  >
+                    <PencilCompose className="h-3 w-3 fill-[#8C8C8C]" />
+                    <span className="hidden text-sm text-[#8C8C8C] md:inline">
+                      Help me write
+                    </span>
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="cursor-pointer gap-1.5 rounded-full border border-[#E7E7E7] dark:border-[#3A3A3A]"
+                    onClick={() => void handleMakeConcise()}
+                    disabled={isLoading || aiIsLoading || messageLength < 1}
+                  >
+                    <ListFilter className="h-3.5 w-3.5 text-[#8C8C8C]" />
+                    <span className="hidden text-sm text-[#8C8C8C] md:inline">
+                      Make concise
+                    </span>
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
