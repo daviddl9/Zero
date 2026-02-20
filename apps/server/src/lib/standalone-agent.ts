@@ -45,6 +45,11 @@ export interface StandaloneAgentStub {
     pageToken?: string;
   }): Promise<IGetThreadsResponse>;
   suggestRecipients(query: string, limit: number): Promise<RecipientSuggestion[]>;
+  searchThreads(params: {
+    query: string;
+    folder?: string;
+    maxResults?: number;
+  }): Promise<{ threadIds: string[]; source: string; nextPageToken?: string }>;
   // Direct driver methods also on the stub
   listDrafts: MailManager['listDrafts'];
   getDraft: MailManager['getDraft'];
@@ -137,6 +142,22 @@ export function createStandaloneAgent(
       setCachedThreadList(activeConnection.id, params, result);
 
       return result;
+    },
+
+    async searchThreads(params: {
+      query: string;
+      folder?: string;
+      maxResults?: number;
+    }): Promise<{ threadIds: string[]; source: string; nextPageToken?: string }> {
+      const result = await driver.list({
+        folder: params.folder || 'all mail',
+        query: params.query,
+        maxResults: params.maxResults || 20,
+      });
+      return {
+        threadIds: result.threads.map((t) => t.id),
+        source: 'raw',
+      };
     },
 
     async suggestRecipients(
