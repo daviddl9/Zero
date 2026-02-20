@@ -107,12 +107,13 @@ export class DraftingAgent {
         });
 
         try {
+            console.log('[DraftingAgent] Result text length:', result.text.length, 'steps:', result.steps.length, 'toolCalls:', result.steps.map(s => s.toolCalls?.length || 0));
             const cleanText = result.text.replace(/```json\n?|\n?```/g, '').trim();
             const parsed = JSON.parse(cleanText);
             const validated = DraftsResponseSchema.parse(parsed);
             return { drafts: validated.drafts, steps };
         } catch (error) {
-            console.error('[DraftingAgent] Failed to parse response:', result.text, error);
+            console.error('[DraftingAgent] Failed to parse response:', JSON.stringify(result.text).substring(0, 200), error);
             // Fallback: treat the raw text as a single draft body
             const fallbackDraft: DraftResponse = {
                 approach: 'Generated response',
