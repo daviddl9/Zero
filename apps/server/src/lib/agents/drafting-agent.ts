@@ -33,6 +33,10 @@ export class DraftingAgent {
                 }),
                 execute: async ({ recipientEmail }) => {
                     try {
+                        if (!recipientEmail) {
+                            steps.push('No recipient email provided, skipping past email search.');
+                            return [];
+                        }
                         steps.push(`Searching past emails with ${recipientEmail}...`);
                         return await searchPastEmails(recipientEmail, this.connectionId, this.userEmail);
                     } catch (error) {

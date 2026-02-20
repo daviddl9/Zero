@@ -431,7 +431,7 @@ export function EmailComposer({
       const values = getValues();
 
       const result = await agentGenerateDrafts({
-        recipientEmail: values.to[0],
+        recipientEmail: values.to[0] || initialTo[0],
         userPoints: description || editor.getText(),
       });
 
