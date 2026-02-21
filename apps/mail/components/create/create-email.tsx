@@ -207,7 +207,7 @@ export function CreateEmail({
     <>
       <Dialog open={!!isComposeOpen} onOpenChange={handleDialogClose}>
         <div className="flex min-h-screen flex-col items-center justify-center gap-1">
-          <div className="flex w-[750px] justify-start">
+          <div className="flex w-full max-w-[750px] justify-start px-4 md:px-0">
             <DialogClose asChild className="flex">
               <button className="dark:bg-panelDark flex items-center gap-1 rounded-lg bg-[#F0F0F0] px-2 py-1 hover:bg-gray-100 dark:hover:bg-[#404040] transition-colors cursor-pointer">
                 <X className="fill-muted-foreground mt-0.5 h-3.5 w-3.5 dark:fill-[#929292]" />
@@ -218,7 +218,7 @@ export function CreateEmail({
             </DialogClose>
           </div>
           {isDraftLoading ? (
-            <div className="flex h-[600px] w-[750px] items-center justify-center rounded-2xl border">
+            <div className="flex h-[600px] w-full max-w-[750px] items-center justify-center rounded-2xl border">
               <div className="text-center">
                 <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
                 <p>Loading draft...</p>
