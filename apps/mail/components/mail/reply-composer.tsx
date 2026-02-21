@@ -287,6 +287,25 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
   const finalCc = calculatedCc.length > 0 ? calculatedCc : ensureEmailArray(draft?.cc);
   const finalSubject = calculatedSubject || draft?.subject || '';
 
+  // Convert original email attachments to File[] for forwarding
+  const forwardAttachments: File[] =
+    mode === 'forward' && replyToMessage?.attachments
+      ? replyToMessage.attachments
+          .map((att) => {
+            try {
+              const byteString = atob(att.body);
+              const byteArray = new Uint8Array(byteString.length);
+              for (let i = 0; i < byteString.length; i++) {
+                byteArray[i] = byteString.charCodeAt(i);
+              }
+              return new File([byteArray], att.filename, { type: att.mimeType });
+            } catch {
+              return null;
+            }
+          })
+          .filter((file): file is File => file !== null)
+      : [];
+
   return (
     <div className="w-full rounded-2xl overflow-visible border">
       <EmailComposer
@@ -303,6 +322,7 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
         initialCc={finalCc}
         initialBcc={ensureEmailArray(draft?.bcc)}
         initialSubject={finalSubject}
+        initialAttachments={forwardAttachments}
         autofocus={true}
         settingsLoading={settingsLoading}
         replyingTo={replyToMessage?.sender.email}
