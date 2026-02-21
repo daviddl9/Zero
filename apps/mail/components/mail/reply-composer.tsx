@@ -1,3 +1,4 @@
+import { useAttachments } from '@/hooks/use-attachments';
 import { useUndoSend } from '@/hooks/use-undo-send';
 import { constructReplyBody, constructForwardBody } from '@/lib/utils';
 import { useActiveConnection } from '@/hooks/use-connections';
@@ -281,16 +282,22 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
     return [];
   };
 
+  // Fetch actual attachment data for forwarding (thread data has empty body fields)
+  const shouldFetchAttachments = mode === 'forward' && (replyToMessage?.attachments?.length ?? 0) > 0;
+  const { data: fetchedAttachments, isLoading: attachmentsLoading } = useAttachments(
+    shouldFetchAttachments ? (replyToMessage?.id ?? '') : '',
+  );
+
   if (!mode || !emailData) return null;
 
   const finalTo = calculatedTo.length > 0 ? calculatedTo : ensureEmailArray(draft?.to);
   const finalCc = calculatedCc.length > 0 ? calculatedCc : ensureEmailArray(draft?.cc);
   const finalSubject = calculatedSubject || draft?.subject || '';
 
-  // Convert original email attachments to File[] for forwarding
+  // Build File[] from fetched attachment data (which has real body content)
   const forwardAttachments: File[] =
-    mode === 'forward' && replyToMessage?.attachments
-      ? replyToMessage.attachments
+    mode === 'forward' && fetchedAttachments?.length
+      ? fetchedAttachments
           .map((att) => {
             try {
               const byteString = atob(att.body);
@@ -305,6 +312,10 @@ export default function ReplyCompose({ messageId }: ReplyComposeProps) {
           })
           .filter((file): file is File => file !== null)
       : [];
+
+  if (shouldFetchAttachments && attachmentsLoading) {
+    return <div className="p-4 text-sm text-muted-foreground">Loading attachments...</div>;
+  }
 
   return (
     <div className="w-full rounded-2xl overflow-visible border">
