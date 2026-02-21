@@ -10,6 +10,7 @@ import {
   upsertContacts,
   loadContactsIntoMemory,
   searchContacts,
+  getTopContacts,
   getContactCount,
 } from './contact-index';
 import { search as miniSearch } from './search-index';
@@ -39,6 +40,7 @@ interface SearchIndexContextValue {
   contactCount: number;
   search: (query: string, options?: { limit?: number }) => SearchResult[];
   searchContacts: (query: string, limit?: number) => IndexedContact[];
+  getTopContacts: (limit?: number) => IndexedContact[];
 }
 
 const SearchIndexContext = createContext<SearchIndexContextValue | null>(null);
@@ -309,12 +311,21 @@ export function SearchIndexProvider({ children }: { children: React.ReactNode })
     [isReady],
   );
 
+  const getTopContactsFn = useCallback(
+    (limit?: number): IndexedContact[] => {
+      if (!isReady) return [];
+      return getTopContacts(limit);
+    },
+    [isReady],
+  );
+
   const value: SearchIndexContextValue = {
     isReady,
     threadCount,
     contactCount,
     search: searchFn,
     searchContacts: searchContactsFn,
+    getTopContacts: getTopContactsFn,
   };
 
   return <SearchIndexContext.Provider value={value}>{children}</SearchIndexContext.Provider>;

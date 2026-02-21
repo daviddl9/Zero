@@ -2,9 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useController, type Control } from 'react-hook-form';
-import { useTRPC } from '@/providers/query-provider';
-import { useQuery } from '@tanstack/react-query';
-import { useDebounce } from '@/hooks/use-debounce';
+import { useContactSearch } from '@/hooks/use-contact-search';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 import { Avatar, AvatarFallback } from './avatar';
@@ -83,28 +81,24 @@ export function RecipientAutosuggest({
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [isComposing, setIsComposing] = useState(false);
-  
+
   const inputDomRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const debouncedSetQuery = useDebounce((query: string) => {
-    setDebouncedQuery(query);
-  }, 300);
+  const { contacts: localContacts, getTopContacts } = useContactSearch(inputValue, 10);
 
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-
-  const trpc = useTRPC();
-  const { data: allSuggestions = [], isLoading } = useQuery({
-    ...trpc.mail.suggestRecipients.queryOptions({
-      query: debouncedQuery,
-      limit: 10,
-    }),
-    enabled: debouncedQuery.trim().length > 0 && !isComposing,
-  });
+  const allSuggestions: RecipientSuggestion[] = useMemo(() => {
+    const contacts = inputValue.trim().length > 0 ? localContacts : getTopContacts(10);
+    return contacts.map((c) => ({
+      email: c.email,
+      name: c.name || null,
+      displayText: c.name ? `${c.name} <${c.email}>` : c.email,
+    }));
+  }, [localContacts, inputValue, getTopContacts]);
 
   const filteredSuggestions = useMemo(() => {
     const validatedSuggestions = validateSuggestions(allSuggestions);
-    return validatedSuggestions.filter((suggestion) => 
+    return validatedSuggestions.filter((suggestion) =>
       !recipients.includes(suggestion.email)
     );
   }, [allSuggestions, recipients]);
@@ -132,9 +126,8 @@ export function RecipientAutosuggest({
     const value = e.target.value;
     setInputValue(value);
     setSelectedIndex(-1);
-    debouncedSetQuery(value);
-    setIsOpen(value.trim().length > 0);
-  }, [debouncedSetQuery]);
+    setIsOpen(true);
+  }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (isComposing) return;
@@ -209,6 +202,7 @@ export function RecipientAutosuggest({
   }, []);
 
   const handleInputFocus = useCallback(() => {
+    setIsOpen(true);
     document.addEventListener('mousedown', handleClickOutside);
   }, [handleClickOutside]);
 
@@ -261,21 +255,13 @@ export function RecipientAutosuggest({
         />
       </div>
 
-      {isOpen && (filteredSuggestions.length > 0 || isLoading) && (
+      {isOpen && filteredSuggestions.length > 0 && (
         <div
           ref={dropdownRef}
           className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-auto rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
           id="recipient-suggestions"
           role="listbox"
         >
-          {isLoading && (
-            <div className="px-2 py-1.5 text-sm text-muted-foreground">
-              Loading suggestions...
-            </div>
-          )}
-          {!isLoading && filteredSuggestions.length === 0 && debouncedQuery.trim().length > 0 && (
-            <div className="px-2 py-1.5 text-sm text-muted-foreground">No suggestions</div>
-          )}
           {filteredSuggestions.map((suggestion: RecipientSuggestion, index: number) => (
             <button
               key={suggestion.email}

@@ -102,6 +102,10 @@ export function searchContacts(query: string, limit = 10): IndexedContact[] {
   return results;
 }
 
+export function getTopContacts(limit = 10): IndexedContact[] {
+  return contactsCache.slice(0, limit);
+}
+
 export function getContactCount(): number {
   return contactsCache.length;
 }
