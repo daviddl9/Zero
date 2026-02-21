@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
-import { Check, Command, ListFilter, Loader, Paperclip, Plus, Type, X as XIcon } from 'lucide-react';
+import { Check, Command, ListFilter, Loader, Paperclip, Plus, Type, Wand2, X as XIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextEffect } from '@/components/motion-primitives/text-effect';
@@ -519,6 +519,19 @@ export function EmailComposer({
     );
   };
 
+  const handlePolish = async () => {
+    const text = editor.getText().trim();
+    if (!text) {
+      toast.error('Write an email first, then polish it');
+      return;
+    }
+    setAiGeneratedMessage(null);
+    setGeneratedDrafts(null);
+    await handleAiGenerate(
+      `Polish and improve this email. Fix any grammar or spelling issues, improve clarity and flow, and make it sound more professional while keeping the same tone and meaning:\n\n${text}`,
+    );
+  };
+
   const saveDraft = useCallback(async () => {
     const values = getValues();
 
@@ -866,10 +879,10 @@ export function EmailComposer({
       </div>
 
       {/* Bottom Actions */}
-      <div className="inline-flex w-full shrink-0 items-end justify-between self-stretch rounded-b-2xl bg-[#FFFFFF] px-3 py-3 outline-white/5 dark:bg-[#202020]">
+      <div className="flex w-full shrink-0 flex-col gap-2 self-stretch rounded-b-2xl bg-[#FFFFFF] px-3 py-3 outline-white/5 sm:flex-row sm:items-end sm:justify-between dark:bg-[#202020]">
         <div className="flex flex-col items-start justify-start gap-2">
           {toggleToolbar && <Toolbar editor={editor} />}
-          <div className="flex items-center justify-start gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2">
             <Button
               size={'xs'}
               onClick={handleSend}
@@ -1057,7 +1070,7 @@ export function EmailComposer({
             </TooltipProvider>
           </div>
         </div>
-        <div className="flex items-start justify-start gap-2">
+        <div className="flex w-full items-start justify-start gap-2 sm:w-auto sm:justify-end">
           <div className="relative">
             <AnimatePresence>
               {generatedDrafts !== null && generatedDrafts.length > 1 ? (
@@ -1185,7 +1198,7 @@ export function EmailComposer({
                         setHelpMeWritePrompt('');
                       }
                     }}
-                    className="w-[180px] bg-transparent text-sm text-black placeholder:text-[#8C8C8C] focus:outline-none sm:w-[260px] dark:text-white"
+                    className="w-full min-w-0 bg-transparent text-sm text-black placeholder:text-[#8C8C8C] focus:outline-none sm:w-[260px] dark:text-white"
                     disabled={aiIsLoading}
                   />
                   <Button
@@ -1233,18 +1246,34 @@ export function EmailComposer({
                       Help me write
                     </span>
                   </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="cursor-pointer gap-1.5 rounded-full border border-[#E7E7E7] dark:border-[#3A3A3A]"
-                    onClick={() => void handleMakeConcise()}
-                    disabled={isLoading || aiIsLoading || messageLength < 1}
-                  >
-                    <ListFilter className="h-3.5 w-3.5 text-[#8C8C8C]" />
-                    <span className="hidden text-sm text-[#8C8C8C] md:inline">
-                      Make concise
-                    </span>
-                  </Button>
+                  {messageLength >= 1 && (
+                    <>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="cursor-pointer gap-1.5 rounded-full border border-[#E7E7E7] dark:border-[#3A3A3A]"
+                        onClick={() => void handlePolish()}
+                        disabled={isLoading || aiIsLoading}
+                      >
+                        <Wand2 className="h-3.5 w-3.5 text-[#8C8C8C]" />
+                        <span className="hidden text-sm text-[#8C8C8C] md:inline">
+                          Polish
+                        </span>
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="cursor-pointer gap-1.5 rounded-full border border-[#E7E7E7] dark:border-[#3A3A3A]"
+                        onClick={() => void handleMakeConcise()}
+                        disabled={isLoading || aiIsLoading}
+                      >
+                        <ListFilter className="h-3.5 w-3.5 text-[#8C8C8C]" />
+                        <span className="hidden text-sm text-[#8C8C8C] md:inline">
+                          Make concise
+                        </span>
+                      </Button>
+                    </>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1363,7 +1392,7 @@ const ContentPreview = ({
     initial="initial"
     animate="animate"
     exit="exit"
-    className="dark:bg-subtleBlack absolute bottom-full right-0 z-30 z-50 w-[400px] overflow-hidden rounded-xl border bg-white p-1 shadow-md"
+    className="dark:bg-subtleBlack absolute bottom-full right-0 z-50 w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-white p-1 shadow-md sm:w-[400px]"
   >
     <div
       className="max-h-60 min-h-[150px] overflow-auto rounded-md p-1 text-sm"
