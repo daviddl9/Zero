@@ -5,6 +5,68 @@ interface EmailRecipient {
   name?: string;
 }
 
+interface EmailResult {
+  subject: string;
+  body: string;
+  date: string;
+  to: string[];
+  from: string;
+  direction: 'sent' | 'received';
+}
+
+export const searchUserSentEmails = async (
+  connectionId: string,
+  userEmail: string,
+  limit: number = 5
+): Promise<EmailResult[]> => {
+  try {
+    const { stub: agent } = await getZeroAgent(connectionId);
+
+    const searchResult = await agent.searchThreads({
+      query: 'from:me',
+      maxResults: limit * 2,
+      folder: 'sent',
+    });
+
+    if (!searchResult.threadIds.length) {
+      return [];
+    }
+
+    const emails: EmailResult[] = [];
+
+    for (const threadId of searchResult.threadIds.slice(0, limit)) {
+      try {
+        const { result: thread } = await getThread(connectionId, threadId);
+        if (thread?.messages) {
+          for (const message of thread.messages) {
+            const isSent = message.sender.email?.toLowerCase() === userEmail.toLowerCase();
+            if (!isSent) continue;
+
+            emails.push({
+              subject: message.subject || '',
+              body: message.decodedBody?.slice(0, 2000) || '',
+              date: message.receivedOn || '',
+              to: (message.to as EmailRecipient[] | undefined)?.map((t) => t.email) || [],
+              from: message.sender.email || '',
+              direction: 'sent',
+            });
+
+            if (emails.length >= limit) break;
+          }
+        }
+      } catch (error) {
+        console.error(`[searchUserSentEmails] Error fetching thread ${threadId}:`, error);
+      }
+      if (emails.length >= limit) break;
+    }
+
+    return emails;
+  } catch (error) {
+    console.error('[searchUserSentEmails] Error:', error);
+    return [];
+  }
+};
+
 export const searchPastEmails = async (
   recipientEmail: string,
   connectionId: string,

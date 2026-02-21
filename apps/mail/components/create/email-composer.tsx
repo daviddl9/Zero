@@ -433,6 +433,8 @@ export function EmailComposer({
       const result = await agentGenerateDrafts({
         recipientEmail: values.to[0] || initialTo[0],
         userPoints: description || editor.getText(),
+        threadId: threadId ?? undefined,
+        subject: values.subject || undefined,
       });
 
       if (result.steps) {
