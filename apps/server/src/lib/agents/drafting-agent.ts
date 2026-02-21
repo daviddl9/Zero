@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
-import { searchPastEmails, searchUserSentEmails } from '../../services/agent-tools';
+import type { EmailResult } from '../../services/agent-tools';
 
 const DraftSchema = z.object({
   approach: z.string().describe('Short label for this response approach (e.g., "Accept invitation", "Decline politely")'),
@@ -26,59 +26,18 @@ interface ThreadMessage {
 }
 
 export class DraftingAgent {
-  constructor(
-    private connectionId: string,
-    private userEmail: string
-  ) {}
-
   async generateDrafts(context: {
     recipientEmail?: string;
     userPoints?: string;
     subject?: string;
     currentThread?: ThreadMessage[];
+    pastEmails?: EmailResult[];
   }) {
-    const steps: string[] = [];
-
-    // Search past emails with recipient AND user's recent sent emails in parallel
-    const [pastEmails, sentEmails] = await Promise.all([
-      context.recipientEmail
-        ? (async () => {
-            try {
-              steps.push(`Searching past emails with ${context.recipientEmail}...`);
-              const results = await searchPastEmails(context.recipientEmail!, this.connectionId, this.userEmail);
-              steps.push(`Found ${results.length} past emails for context.`);
-              return results;
-            } catch (error) {
-              console.error('[DraftingAgent] searchPastEmails failed:', error);
-              steps.push('Past email search failed, proceeding without context.');
-              return [];
-            }
-          })()
-        : (async () => {
-            steps.push('No recipient email provided, skipping past email search.');
-            return [];
-          })(),
-      (async () => {
-        try {
-          steps.push('Searching your recent sent emails for writing style...');
-          const results = await searchUserSentEmails(this.connectionId, this.userEmail, 5);
-          steps.push(`Found ${results.length} sent emails for style matching.`);
-          return results;
-        } catch (error) {
-          console.error('[DraftingAgent] searchUserSentEmails failed:', error);
-          steps.push('Style sample search failed, proceeding without style context.');
-          return [];
-        }
-      })(),
-    ]);
+    const pastEmails = context.pastEmails ?? [];
 
     const pastEmailContext = pastEmails.length > 0
       ? `\n\nPAST EMAILS WITH RECIPIENT:\n${pastEmails.map((e, i) => `--- Email ${i + 1} (${e.direction}) ---\nFrom: ${e.from}\nTo: ${e.to.join(', ')}\nDate: ${e.date}\nSubject: ${e.subject}\nBody: ${e.body}\n`).join('\n')}`
       : '\n\nNo past emails found with this recipient.';
-
-    const styleContext = sentEmails.length > 0
-      ? `\n\nWRITING STYLE SAMPLES (user's recent sent emails across all recipients):\n${sentEmails.map((e, i) => `--- Sent Email ${i + 1} ---\nTo: ${e.to.join(', ')}\nDate: ${e.date}\nSubject: ${e.subject}\nBody: ${e.body}\n`).join('\n')}`
-      : '';
 
     const threadContext = context.currentThread?.length
       ? `\n\nCURRENT EMAIL THREAD (you are drafting a reply to this):\nSubject: ${context.subject || context.currentThread[0]?.subject || ''}\n${context.currentThread.map((m, i) => `--- Message ${i + 1} ---\nFrom: ${m.fromName ? `${m.fromName} <${m.from}>` : m.from}\nDate: ${m.date}\n${m.body}\n`).join('\n')}`
@@ -95,10 +54,8 @@ WORKFLOW:
 3. Draft 2 distinct options corresponding to these courses of action.
 
 STYLE REPLICATION:
-- First examine the WRITING STYLE SAMPLES section — these are the user's recent sent emails
-  across all recipients and best represent their natural voice.
-- Also examine 'direction: sent' emails in PAST EMAILS WITH RECIPIENT for
-  recipient-specific tone adjustments.
+- Examine 'direction: sent' emails in PAST EMAILS WITH RECIPIENT to learn the user's
+  natural voice and recipient-specific tone.
 - Mimic the user's vocabulary, formatting habits (e.g., lowercase-only, heavy use of bullet points),
   greeting/sign-off style, and typical email length.
 - If no sent emails are found, default to a professional yet concise tone.
@@ -135,21 +92,21 @@ Example: { "drafts": [
         context.userPoints
           ? `The user wants to: ${context.userPoints}`
           : 'No specific instructions provided, infer from past email context.'
-      }${threadContext}${styleContext}${pastEmailContext}`,
+      }${threadContext}${pastEmailContext}`,
     });
 
     try {
       const cleanText = result.text.replace(/```json\n?|\n?```/g, '').trim();
       const parsed = JSON.parse(cleanText);
       const validated = DraftsResponseSchema.parse(parsed);
-      return { drafts: validated.drafts, steps };
+      return { drafts: validated.drafts, steps: [] };
     } catch (error) {
       console.error('[DraftingAgent] Failed to parse response:', JSON.stringify(result.text).substring(0, 500), error);
       const fallbackDraft: DraftResponse = {
         approach: 'Generated response',
         body: result.text.trim(),
       };
-      return { drafts: [fallbackDraft, fallbackDraft], steps };
+      return { drafts: [fallbackDraft, fallbackDraft], steps: [] };
     }
   }
 }
