@@ -46,7 +46,7 @@ export class DraftingAgent {
       : '\n\nNo past emails found with this recipient.';
 
     const result = await generateText({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-3-flash-preview'),
       system: `You are an expert email drafting assistant.
 Your goal is to draft 2 distinct email options for the user.
 
