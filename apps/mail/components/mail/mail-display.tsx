@@ -42,7 +42,6 @@ import { useTRPC } from '@/providers/query-provider';
 import { useThreadLabels } from '@/hooks/use-labels';
 import { useMutation } from '@tanstack/react-query';
 import { TextShimmer } from '../ui/text-shimmer';
-import { useThread } from '@/hooks/use-threads';
 import { BimiAvatar } from '../ui/bimi-avatar';
 import { RenderLabels } from './render-labels';
 import { cleanHtml } from '@/lib/email-utils';
@@ -154,6 +153,7 @@ type Props = {
   onReplyAll?: () => void;
   onForward?: () => void;
   threadAttachments?: Attachment[];
+  isLastMessage?: boolean;
 };
 
 const MailDisplayLabels = ({ labels }: { labels: string[] }) => {
@@ -250,32 +250,30 @@ const cleanNameDisplay = (name?: string) => {
   return name.trim();
 };
 
+const getAttachmentUrl = (
+  messageId: string,
+  attachmentId: string,
+  mimeType: string,
+  options?: { download?: boolean; filename?: string },
+) => {
+  const params = new URLSearchParams({ mimeType });
+  if (options?.download) {
+    params.set('download', 'true');
+    if (options.filename) params.set('filename', options.filename);
+  }
+  return `/api/attachments/${encodeURIComponent(messageId)}/${encodeURIComponent(attachmentId)}?${params.toString()}`;
+};
+
 const ThreadAttachments = ({ attachments }: { attachments: Attachment[] }) => {
   if (!attachments || attachments.length === 0) return null;
 
-  const handleDownload = async (attachment: Attachment) => {
-    try {
-      // Convert base64 to blob
-      const byteCharacters = atob(attachment.body);
-      const byteNumbers: number[] = Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: attachment.mimeType });
-
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = attachment.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error downloading attachment:', error);
+  const handleOpen = (attachment: Attachment) => {
+    if (!attachment.messageId) {
+      console.error('Cannot open attachment: missing messageId');
+      return;
     }
+    const url = getAttachmentUrl(attachment.messageId, attachment.attachmentId, attachment.mimeType);
+    window.open(url, '_blank');
   };
 
   return (
@@ -289,7 +287,7 @@ const ThreadAttachments = ({ attachments }: { attachments: Attachment[] }) => {
         {attachments.map((attachment) => (
           <button
             key={`${attachment.attachmentId}-${attachment.filename}`}
-            onClick={() => handleDownload(attachment)}
+            onClick={() => handleOpen(attachment)}
             className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-[#F0F0F0] dark:bg-[#262626] dark:hover:bg-[#303030]"
           >
             <span className="text-muted-foreground">{getFileIcon(attachment.filename)}</span>
@@ -336,39 +334,21 @@ const ActionButton = ({ onClick, icon, text, shortcut }: ActionButtonProps) => {
   );
 };
 
-const downloadAttachment = async (attachment: {
-  body: string;
+const downloadAttachment = (messageId: string, attachment: {
   mimeType: string;
   filename: string;
   attachmentId: string;
 }) => {
-  try {
-    const attachmentData = attachment.body;
-
-    if (!attachmentData) {
-      throw new Error('Attachment data not found');
-    }
-
-    const byteCharacters = atob(attachmentData);
-    const byteNumbers: number[] = Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: attachment.mimeType });
-
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = attachment.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('Error downloading attachment:', error);
-    toast.error('Failed to download attachment');
-  }
+  const url = getAttachmentUrl(messageId, attachment.attachmentId, attachment.mimeType, {
+    download: true,
+    filename: attachment.filename,
+  });
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = attachment.filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
 const handleDownloadAllAttachments =
@@ -425,48 +405,13 @@ const handleDownloadAllAttachments =
     console.log('downloaded', subject, attachments);
   };
 
-const openAttachment = async (attachment: {
-  body: string;
+const openAttachment = (messageId: string, attachment: {
   mimeType: string;
   filename: string;
   attachmentId: string;
 }) => {
-  try {
-    const attachmentData = attachment.body;
-
-    if (!attachmentData) {
-      throw new Error('Attachment data not found');
-    }
-
-    const byteCharacters = atob(attachmentData);
-    const byteNumbers: number[] = Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: attachment.mimeType });
-    const url = window.URL.createObjectURL(blob);
-
-    const width = 800;
-    const height = 600;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-
-    const popup = window.open(
-      url,
-      'attachment-viewer',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,location=no,menubar=no`,
-    );
-
-    if (popup) {
-      popup.focus();
-      // Clean up the URL after a short delay to ensure the browser has time to load it
-      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-    }
-  } catch (error) {
-    console.error('Error opening attachment:', error);
-    toast.error('Failed to open attachment');
-  }
+  const url = getAttachmentUrl(messageId, attachment.attachmentId, attachment.mimeType);
+  window.open(url, '_blank');
 };
 
 const MoreAboutPerson = ({
@@ -617,10 +562,9 @@ const MoreAboutQuery = ({
   );
 };
 
-const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }: Props) => {
+const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments, isLastMessage }: Props) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(!demo && totalEmails ? index !== totalEmails - 1 : false);
   const [hasBeenExpanded, setHasBeenExpanded] = useState(!isCollapsed);
-  const { data: threadData } = useThread(emailData.threadId ?? null);
   const { data: messageAttachments } = useAttachments(isCollapsed ? '' : emailData.id);
   //   const [unsubscribed, setUnsubscribed] = useState(false);
   //   const [isUnsubscribing, setIsUnsubscribing] = useState(false);
@@ -645,11 +589,6 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   //   const trpc = useTRPC();
 
-  const isLastEmail = useMemo(
-    () => emailData.id === threadData?.latest?.id,
-    [emailData.id, threadData?.latest?.id],
-  );
-
   const [, setMode] = useQueryState('mode');
 
   useEffect(() => {
@@ -661,7 +600,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
         // For emails not being replied to, use the default behavior:
         // - Last email should be expanded
         // - All other emails should be collapsed
-        setIsCollapsed(!isLastEmail);
+        setIsCollapsed(!isLastMessage);
       }
       // Set all emails to collapsed by default except the last one
       if (totalEmails && index === totalEmails - 1) {
@@ -673,7 +612,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
         }
       }
     }
-  }, [demo, emailData.id, isLastEmail, activeReplyId]);
+  }, [demo, emailData.id, isLastMessage, activeReplyId]);
 
   useEffect(() => {
     if (!isCollapsed) setHasBeenExpanded(true);
@@ -1634,7 +1573,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
                       >
                         <button
                           className="flex cursor-pointer items-center gap-1 rounded-[5px] bg-[#FAFAFA] px-1.5 py-1 text-sm font-medium hover:bg-[#F0F0F0] dark:bg-[#262626] dark:hover:bg-[#303030]"
-                          onClick={() => openAttachment(attachment)}
+                          onClick={() => openAttachment(emailData.id, attachment)}
                         >
                           {getFileIcon(attachment.filename)}
                           <span className="max-w-[15ch] truncate text-sm text-black dark:text-white">
@@ -1645,7 +1584,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
                           </span>
                         </button>
                         <button
-                          onClick={() => downloadAttachment(attachment)}
+                          onClick={() => downloadAttachment(emailData.id, attachment)}
                           className="flex cursor-pointer items-center gap-1 rounded-[5px] px-1.5 py-1 text-sm"
                         >
                           <HardDriveDownload className="text-muted-foreground dark:text-muted-foreground h-4 w-4 fill-[#FAFAFA] dark:fill-[#262626]" />
@@ -1667,7 +1606,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
                     }}
                     icon={<Reply className="fill-muted-foreground dark:fill-[#9B9B9B]" />}
                     text={m['common.mail.reply']()}
-                    shortcut={isLastEmail ? 'r' : undefined}
+                    shortcut={isLastMessage ? 'r' : undefined}
                   />
                   <ActionButton
                     onClick={(e) => {
@@ -1678,7 +1617,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
                     }}
                     icon={<ReplyAll className="fill-muted-foreground dark:fill-[#9B9B9B]" />}
                     text={m['common.mail.replyAll']()}
-                    shortcut={isLastEmail ? 'a' : undefined}
+                    shortcut={isLastMessage ? 'a' : undefined}
                   />
                   <ActionButton
                     onClick={(e) => {
@@ -1689,7 +1628,7 @@ const MailDisplay = ({ emailData, index, totalEmails, demo, threadAttachments }:
                     }}
                     icon={<Forward className="fill-muted-foreground dark:fill-[#9B9B9B]" />}
                     text={m['common.mail.forward']()}
-                    shortcut={isLastEmail ? 'f' : undefined}
+                    shortcut={isLastMessage ? 'f' : undefined}
                   />
                 </div>
               </div>

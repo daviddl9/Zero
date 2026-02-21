@@ -31,13 +31,20 @@ attachmentsRouter.get('/:messageId/:attachmentId', async (c) => {
 
     const binaryData = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
 
-    return new Response(binaryData, {
-      headers: {
-        'Content-Type': mimeType,
-        'Cache-Control': 'private, max-age=86400',
-        'Content-Length': binaryData.length.toString(),
-      },
-    });
+    const download = c.req.query('download') === 'true';
+    const filename = c.req.query('filename');
+
+    const headers: Record<string, string> = {
+      'Content-Type': mimeType,
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Length': binaryData.length.toString(),
+    };
+
+    if (download && filename) {
+      headers['Content-Disposition'] = `attachment; filename="${filename.replace(/"/g, '\\"')}"`;
+    }
+
+    return new Response(binaryData, { headers });
   } catch (error) {
     console.error('[Attachments] Error fetching attachment:', error);
     return c.json({ error: 'Failed to fetch attachment' }, 500);

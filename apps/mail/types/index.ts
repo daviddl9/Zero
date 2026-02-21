@@ -102,6 +102,7 @@ export interface Attachment {
   size: number;
   body: string;
   headers: { name?: string | null; value?: string | null }[];
+  messageId?: string;
 }
 export interface MailListProps {
   isCompact?: boolean;

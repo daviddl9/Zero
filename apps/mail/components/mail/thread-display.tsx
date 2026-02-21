@@ -172,7 +172,7 @@ export function ThreadDisplay() {
     if (!emailData?.messages) return [];
     return emailData.messages.reduce<Attachment[]>((acc, message) => {
       if (message.attachments && message.attachments.length > 0) {
-        acc.push(...message.attachments);
+        acc.push(...message.attachments.map((att) => ({ ...att, messageId: message.id })));
       }
       return acc;
     }, []);
@@ -1066,6 +1066,7 @@ const MessageList = ({
                   isLoading={false}
                   index={originalIndex}
                   totalEmails={totalReplies}
+                  isLastMessage={isLastMessage}
                   threadAttachments={originalIndex === 0 ? allThreadAttachments : undefined}
                 />
                 {isReplyingToThisMessage && !isLastMessage && (
